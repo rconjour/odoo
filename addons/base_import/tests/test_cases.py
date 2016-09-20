@@ -31,6 +31,7 @@ class BaseImportCase(TransactionCase):
     def setUp(self):
         super(BaseImportCase, self).setUp()
         self.env.user.lang = 'en_US'
+        self.maxDiff = None
 
     def assertEqualFields(self, fields1, fields2):
         self.assertEqual(sorted_fields(fields1), sorted_fields(fields2))
