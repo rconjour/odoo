@@ -505,7 +505,7 @@ class ir_translation(osv.osv):
                     _logger.info('module %s: loading translation file (%s) for language %s', module_name, lang_code, lang)
                     tools.trans_load(cr, trans_file, lang, verbose=False, module_name=module_name, context=context)
                 elif lang_code != 'en_US':
-                    _logger.warning('module %s: no translation for language %s', module_name, lang_code)
+                    _logger.debug('module %s: no translation for language %s', module_name, lang_code)
 
                 trans_extra_file = openerp.modules.get_module_resource(module_name, 'i18n_extra', lang_code + '.po')
                 if trans_extra_file:
