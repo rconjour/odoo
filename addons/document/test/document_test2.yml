@@ -70,7 +70,7 @@
                 'name': 'Testing (will be deleted!)',
                 'parent_id': ref('document.dir_root')
             }
-            new_dir_id = self.create(cr, demo_uid, dir_vals, context=None)
+            new_dir_id = self.create(cr, demo_uid, dir_vals, context={'lang': 'en_US'})
             self.unlink(cr, uid, [new_dir_id], context=None)
         except except_osv, e:
             duplicate_detected = e.value == u'Directory name must be unique!'
