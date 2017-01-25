@@ -10,6 +10,7 @@ class TestServerActionsBase(common.TransactionCase):
     def setUp(self):
         super(TestServerActionsBase, self).setUp()
         cr, uid = self.cr, self.uid
+        self.env.user.lang = 'en_US'
 
         # Models
         self.ir_actions_server = self.registry('ir.actions.server')
