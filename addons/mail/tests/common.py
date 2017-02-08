@@ -102,6 +102,7 @@ class TestMail(common.SavepointCase):
             'signature': 'SignRaoul',
             'email': 'raoul@raoul.fr',
             'login': 'raoul',
+            'lang': 'en_US',
             'alias_name': 'raoul',
             'groups_id': [(6, 0, [cls.group_employee_id])]
         }, {'no_reset_password': True})
