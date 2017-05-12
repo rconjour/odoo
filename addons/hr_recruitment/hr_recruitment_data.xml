@@ -1,17 +1,6 @@
 <?xml version="1.0"?>
 <openerp>
 <data noupdate="1">
-        <!-- notify all employees of module installation -->
-        <record model="mail.message" id="module_install_notification">
-            <field name="model">mail.group</field>
-            <field name="res_id" ref="mail.group_all_employees"/>
-            <field name="type">notification</field>
-            <field name="subtype_id" ref="mail.mt_comment"/>
-            <field name="subject">Recruitment Process application installed!</field>
-            <field name="body"><![CDATA[<p>Manage job positions and your company's recruitment process. This application is integrated with the Survey application to help you define interviews for different jobs.</p>
-<p>You can automatically receive job application though an email gateway, see the Human Resources settings.</p>]]></field>
-        </record>
-
     <!-- Meeting Types (for interview meetings) -->
     <record model="calendar.event.type" id="categ_meet_interview">
         <field name="name">Interview</field>
