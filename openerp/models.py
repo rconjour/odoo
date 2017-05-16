@@ -5763,16 +5763,19 @@ class BaseModel(object):
                 for f in field.computed_fields
                 if f.store and self.env.field_todo(f)
             ]
+            writes = {}
             for rec in recs:
                 try:
-                    values = rec._convert_to_write({
-                        name: rec[name] for name in names
-                    })
-                    with rec.env.norecompute():
-                        map(rec._recompute_done, field.computed_fields)
-                        rec._write(values)
+                    values = tuple((name, rec[name]) for name in names)
+                    if values in writes:
+                        writes[values] += rec
+                    else:
+                        writes[values] = rec
                 except MissingError:
                     pass
+            for values, recs2 in writes.items():
+                map(recs2._recompute_done, field.computed_fields)
+                recs2._write(recs._convert_to_write(dict(values)))
             # mark the computed fields as done
             map(recs._recompute_done, field.computed_fields)
 
