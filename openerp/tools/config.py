@@ -328,6 +328,10 @@ class configmanager(object):
             group.add_option("--limit-request", dest="limit_request", my_default=8192,
                              help="Maximum number of request to be processed per worker (default 8192).",
                              type="int")
+            group.add_option("--prefork-worker-spawn-delay", dest="prefork_worker_spawn_delay",
+                             my_default=3.0,
+                             help="Delay between spawning workers to avoid log file lock conflict.",
+                             type="float")
             parser.add_option_group(group)
 
         # Copy all optparse options (i.e. MyOption) into self.options.

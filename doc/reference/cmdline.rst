@@ -81,6 +81,12 @@ Running the server
 
         Defaults to 120.
 
+    .. option:: --prefork-worker-spawn-delay <delay>
+
+        Delay between spawning workers to avoid log file lock conflict.
+
+        Defaults to 3.0 seconds.
+
 .. option:: --max-cron-threads <count>
 
     number of workers dedicated to cron jobs. Defaults to 2. The workers are

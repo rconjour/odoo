@@ -433,6 +433,7 @@ class PreforkServer(CommonServer):
         self.population = config['workers']
         self.timeout = config['limit_time_real']
         self.limit_request = config['limit_request']
+        self.prefork_worker_spawn_delay = config['prefork_worker_spawn_delay']
         # working vars
         self.beat = 4
         self.app = app
@@ -562,10 +563,12 @@ class PreforkServer(CommonServer):
         if config['xmlrpc']:
             while len(self.workers_http) < self.population:
                 self.worker_spawn(WorkerHTTP, self.workers_http)
+                time.sleep(self.prefork_worker_spawn_delay)
             if not self.long_polling_pid:
                 self.long_polling_spawn()
         while len(self.workers_cron) < config['max_cron_threads']:
             self.worker_spawn(WorkerCron, self.workers_cron)
+            time.sleep(self.prefork_worker_spawn_delay)
 
     def sleep(self):
         try:
