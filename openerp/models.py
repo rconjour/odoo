@@ -3401,7 +3401,8 @@ class BaseModel(object):
             forbidden._cache.update(FailedValue(exc))
             # store a missing error exception in non-existing records
             exc = MissingError(
-                _('One of the documents you are trying to access has been deleted, please try again after refreshing.')
+                _('One of the documents you are trying to access has been deleted, please try again after refreshing. '
+                  '%s#%s') % (self._name, (missing - forbidden)._ids)
             )
             (missing - forbidden)._cache.update(FailedValue(exc))
 
