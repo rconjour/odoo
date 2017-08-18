@@ -28,6 +28,12 @@ def sorted_fields(fields):
     return sorted(recursed, key=lambda field: field['id'])
 
 class BaseImportCase(TransactionCase):
+    def setUp(self):
+        super(BaseImportCase, self).setUp()
+        self.env.user.lang = 'en_US'
+        self.env.user.groups_id -=  self.env.ref('base.group_no_one')
+        self.maxDiff = None
+
     def assertEqualFields(self, fields1, fields2):
         self.assertEqual(sorted_fields(fields1), sorted_fields(fields2))
 
