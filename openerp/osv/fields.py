@@ -1529,7 +1529,13 @@ class related(function):
             value = record
             # traverse all fields except the last one
             for field in self.arg[:-1]:
-                value = value[field][:1]
+                try:
+                    value = value[field][:1]
+                except Exception as e:
+                    _logger.warning(
+                        "Could not read %s.%s (part %s): %s",
+                        obj._name, self.string, field, e)
+                    raise
             # read the last field on the target record
             res[record.id] = value[self.arg[-1]]
 
