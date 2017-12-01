@@ -856,9 +856,11 @@ class BaseModel(object):
             return '__export__.' + name
 
     def build_xml_id_cache(self, records_cache, xml_id_cache):
+        """ Rewritten version of __export_xml_id to allow for bulk searches
+        and inserts of ir_model_data references """
         first_item = self[0]
 
-        _logger.debug("Creating XML id cache for object %s with id's %s" % (
+        _logger.debug("Fetching XML id cache for object %s with id's %s" % (
             first_item._name, records_cache.ids))
 
         def get_values_clause(dct):
@@ -902,6 +904,7 @@ class BaseModel(object):
                 "table %s is not an ordinary table."
                 % (first_item._name, first_item._table))
 
+        # First try and see if any records are already cached
         to_cache_ids = records_cache.ids
         if self._name in xml_id_cache:
             already_cached = xml_id_cache[first_item._name].keys()
@@ -909,6 +912,8 @@ class BaseModel(object):
         else:
             xml_id_cache[first_item._name] = {}
 
+        # Search for XML id's in the database, if there are any already created
+        # for that model and id's
         ir_model_data = self.sudo().env['ir.model.data']
         data = ir_model_data.search(
             [('model', '=', first_item._name), ('res_id', 'in', to_cache_ids)])
@@ -921,6 +926,7 @@ class BaseModel(object):
             xml_id_cache[first_item._name][data_row.res_id] = name
             to_cache_ids.remove(data_row.res_id)
 
+        # Create new xml id's for the ones that could not be found
         new_names = {}
         for to_cache_id in to_cache_ids:
             new_names[to_cache_id] = '%s_%s' % (first_item._table, to_cache_id)
@@ -929,6 +935,8 @@ class BaseModel(object):
             [('module', '=', '__export__'),
              ('name', 'in', new_names.values())])
 
+        # If there are already records with the same name (in the rare case
+        # that that might happen)
         postfix = 0
         while existing_records:
             postfix += 1
@@ -944,6 +952,7 @@ class BaseModel(object):
                 [('module', '=', '__export__'),
                  ('name', 'in', to_search_records.values())])
 
+        # List all records that need a create
         to_create = []
         for res_id, name in new_names.items():
             to_create += [{
@@ -955,6 +964,7 @@ class BaseModel(object):
 
             xml_id_cache[first_item._name][res_id] = '__export__.' + name
 
+        # Do a bulk insert in the database for new records
         if to_create:
             clause, values = get_values_clause_bulk(to_create)
             self.env.cr.execute("INSERT INTO ir_model_data %s" % (clause), values)
@@ -970,6 +980,9 @@ class BaseModel(object):
         xml_id_cache = {}
 
         def _get_xml_id(record, overwrite_all_records=False):
+            """ Prefer to use the cache and if it is not there, fetch/generate
+            the id's for the currect range of records, we can assume that in a
+            range, we allways need all the records in the cache """
             if record._name in xml_id_cache:
                 if record.id in xml_id_cache[record._name]:
                     return xml_id_cache[record._name][record.id]
