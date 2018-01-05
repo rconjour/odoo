@@ -180,6 +180,7 @@ class TestInherits(common.TransactionCase):
         super(TestInherits, self).setUp()
         self.partner = self.registry('res.partner')
         self.user = self.registry('res.users')
+        self.user.write(self.cr, UID, UID, {'lang': 'en_US'})
 
     def test_default(self):
         """ `default_get` cannot return a dictionary or a new id """
