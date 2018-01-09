@@ -218,6 +218,50 @@ class Registry(Mapping):
         return self._any_cache_cleared
 
     @classmethod
+    def setup_count_estimate(cls, cr):
+        """ https://wiki.postgresql.org/wiki/Count_estimate,
+        https://www.citusdata.com/blog/2016/10/12/count-performance/
+        but modified to execute the exact count when the estimation
+        is lower than 100.000, and indicate the status of the returned
+        value. """
+        cr.execute(
+            """
+            DO $$BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_type WHERE typname = 'qualified_count')
+                THEN CREATE TYPE qualified_count AS (
+                  exact BOOLEAN,
+                  rows INTEGER
+                );
+              END IF; END$$;
+            CREATE OR REPLACE FUNCTION count_estimate(query text)
+              RETURNS qualified_count AS $$
+            DECLARE
+              rec RECORD;
+              rows INTEGER;
+              retval qualified_count;
+            BEGIN
+              --- Retrieve the row count of a query from the query plan.
+              --- This is an estimation. If the result is low enough,
+              --- return the exact count instead. Indicate the status in the
+              --- `exact` field of the returned row. `query` argument should
+              --- not include the SELECT clause.
+              FOR rec IN EXECUTE 'EXPLAIN SELECT * ' || query LOOP
+                retval.rows := substring(
+                  rec."QUERY PLAN" FROM ' rows=([[:digit:]]+)');
+                EXIT WHEN retval.rows IS NOT NULL;
+              END LOOP;
+              IF retval.rows IS NOT NULL AND retval.rows < 100000 THEN
+                EXECUTE 'SELECT TRUE, COUNT(1) '|| query INTO retval;
+              ELSE
+                retval.exact = FALSE;
+              END IF;
+              RETURN retval;
+            END;
+            $$ LANGUAGE plpgsql VOLATILE STRICT;
+        """)
+
+    @classmethod
     def setup_multi_process_signaling(cls, cr):
         if not openerp.multi_process:
             return None, None
@@ -366,6 +410,7 @@ class RegistryManager(object):
                         seq_registry, seq_cache = Registry.setup_multi_process_signaling(cr)
                         registry.base_registry_signaling_sequence = seq_registry
                         registry.base_cache_signaling_sequence = seq_cache
+                        Registry.setup_count_estimate(cr)
                     # This should be a method on Registry
                     openerp.modules.load_modules(registry._db, force_demo, status, update_module)
                 except Exception:

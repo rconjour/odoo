@@ -909,12 +909,13 @@ class DataSet(http.Controller):
                 'records': []
             }
         if limit and len(records) == limit:
-            length = Model.search_count(domain, request.context)
+            length = Model.search_count(domain, dict(request.context or {}, count_estimate=True))
         else:
             length = len(records) + (offset or 0)
         return {
             'length': length,
-            'records': records
+            'records': records,
+            'exact': getattr(length, 'exact', None) is False,
         }
 
     @http.route('/web/dataset/load', type='json', auth="user")
