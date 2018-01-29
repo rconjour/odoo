@@ -93,14 +93,12 @@ class account_invoice_line(osv.osv):
 
     def onchange_account_id(self, cr, uid, ids, product_id=False, partner_id=False, inv_type=False, fposition_id=False, account_id=False, context=None):
         ids = isinstance(ids, (int, long)) and [ids] or ids
-        if not account_id:
-            return {}
         res = super(account_invoice_line, self).onchange_account_id(cr, uid, ids, product_id, partner_id, inv_type, fposition_id, account_id)
         rec = self.pool.get('account.analytic.default').account_get(cr, uid, product_id, partner_id, uid, time.strftime('%Y-%m-%d'), account_id=account_id, context=context)
         if rec:
-            res['value'].update({'account_analytic_id': rec.analytic_id.id})
+            res.setdefault('value', {}).update({'account_analytic_id': rec.analytic_id.id})
         else:
-            res['value'].update({'account_analytic_id': False})
+            res.setdefault('value', {}).update({'account_analytic_id': False})
         return res
 
 
