@@ -35,11 +35,12 @@ class account_analytic_default(osv.osv):
         'partner_id': fields.many2one('res.partner', 'Partner', ondelete='cascade', help="Select a partner which will use analytic account specified in analytic default (e.g. create new customer invoice or Sales order if we select this partner, it will automatically take this as an analytic account)"),
         'user_id': fields.many2one('res.users', 'User', ondelete='cascade', help="Select a user which will use analytic account specified in analytic default."),
         'company_id': fields.many2one('res.company', 'Company', ondelete='cascade', help="Select a company which will use analytic account specified in analytic default (e.g. create new customer invoice or Sales order if we select this company, it will automatically take this as an analytic account)"),
+        'account_id': fields.many2one('account.account', 'Account', ondelete='cascade', help="Select an account which will use analytic account specified in analytic default (e.g. create new customer invoice if we select this account, it will automatically take this as an analytic account)"),
         'date_start': fields.date('Start Date', help="Default start date for this Analytic Account."),
         'date_stop': fields.date('End Date', help="Default end date for this Analytic Account."),
     }
 
-    def account_get(self, cr, uid, product_id=None, partner_id=None, user_id=None, date=None, company_id=None, context=None):
+    def account_get(self, cr, uid, product_id=None, partner_id=None, user_id=None, date=None, company_id=None, account_id=None, context=None):
         domain = []
         if product_id:
             domain += ['|', ('product_id', '=', product_id)]
@@ -53,6 +54,9 @@ class account_analytic_default(osv.osv):
         if user_id:
             domain += ['|',('user_id', '=', user_id)]
         domain += [('user_id','=', False)]
+        if account_id:
+            domain += ['|',('account_id', '=', account_id)]
+        domain += [('account_id','=', False)]
         if date:
             domain += ['|', ('date_start', '<=', date), ('date_start', '=', False)]
             domain += ['|', ('date_stop', '>=', date), ('date_stop', '=', False)]
@@ -66,6 +70,7 @@ class account_analytic_default(osv.osv):
             if rec.user_id: index += 1
             if rec.date_start: index += 1
             if rec.date_stop: index += 1
+            if rec.account_id: index += 1
             if index > best_index:
                 res = rec
                 best_index = index
@@ -78,13 +83,25 @@ class account_invoice_line(osv.osv):
 
     def product_id_change(self, cr, uid, ids, product, uom_id, qty=0, name='', type='out_invoice', partner_id=False, fposition_id=False, price_unit=False, currency_id=False, company_id=None, context=None):
         res_prod = super(account_invoice_line, self).product_id_change(cr, uid, ids, product, uom_id, qty, name, type, partner_id, fposition_id, price_unit, currency_id=currency_id, company_id=company_id, context=context)
-        rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=company_id, context=context)
+        account_id = res_prod['value'].get('account_id')
+        rec = self.pool.get('account.analytic.default').account_get(cr, uid, product, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=company_id, account_id=account_id, context=context)
         if rec:
             res_prod['value'].update({'account_analytic_id': rec.analytic_id.id})
         else:
             res_prod['value'].update({'account_analytic_id': False})
         return res_prod
 
+    def onchange_account_id(self, cr, uid, ids, product_id=False, partner_id=False, inv_type=False, fposition_id=False, account_id=False, context=None):
+        ids = isinstance(ids, (int, long)) and [ids] or ids
+        if not account_id:
+            return {}
+        res = super(account_invoice_line, self).onchange_account_id(cr, uid, ids, product_id, partner_id, inv_type, fposition_id, account_id)
+        rec = self.pool.get('account.analytic.default').account_get(cr, uid, product_id, partner_id, uid, time.strftime('%Y-%m-%d'), account_id=account_id, context=context)
+        if rec:
+            res['value'].update({'account_analytic_id': rec.analytic_id.id})
+        else:
+            res['value'].update({'account_analytic_id': False})
+        return res
 
 
 class stock_picking(osv.osv):
@@ -113,11 +130,13 @@ class sale_order_line(osv.osv):
         anal_def_obj = self.pool.get('account.analytic.default')
 
         for line in inv_line_obj.browse(cr, uid, create_ids, context=context):
-            rec = anal_def_obj.account_get(cr, uid, line.product_id.id, sale_line.order_id.partner_id.id, sale_line.order_id.user_id.id, time.strftime('%Y-%m-%d'), context=context)
+            rec = anal_def_obj.account_get(cr, uid, line.product_id.id, sale_line.order_id.partner_id.id, sale_line.order_id.user_id.id, time.strftime('%Y-%m-%d'), account_id=line.account_id.id, context=context)
 
             if rec:
                 inv_line_obj.write(cr, uid, [line.id], {'account_analytic_id': rec.analytic_id.id}, context=context)
         return create_ids
+
+
 class product_product(osv.Model):
     _inherit = 'product.product'
     def _rules_count(self, cr, uid, ids, field_name, arg, context=None):
@@ -126,9 +145,11 @@ class product_product(osv.Model):
             product_id: Analytic.search_count(cr, uid, [('product_id', '=', product_id)], context=context)
             for product_id in ids
         }
+
     _columns = {
         'rules_count': fields.function(_rules_count, string='# Analytic Rules', type='integer'),
     }
+
 
 class product_template(osv.Model):
     _inherit = 'product.template'
@@ -143,7 +164,6 @@ class product_template(osv.Model):
     _columns = {
         'rules_count': fields.function(_rules_count, string='# Analytic Rules', type='integer'),
     }
-
 
     def action_view_rules(self, cr, uid, ids, context=None):
         products = self._get_products(cr, uid, ids, context=context)
@@ -161,7 +181,8 @@ class stock_move(osv.Model):
         # It will set the default analtyic account on the invoice line
         partner_id = self.pool['account.invoice'].browse(cr, uid, invoice_line_vals.get('invoice_id'), context=context).partner_id.id
         if 'account_analytic_id' not in invoice_line_vals or not invoice_line_vals.get('account_analytic_id'):
-            rec = self.pool['account.analytic.default'].account_get(cr, uid, move.product_id.id, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=move.company_id.id, context=context)
+            account_id = invoice_line_vals.get('account_id')
+            rec = self.pool['account.analytic.default'].account_get(cr, uid, move.product_id.id, partner_id, uid, time.strftime('%Y-%m-%d'), company_id=move.company_id.id, account_id=account_id, context=context)
             if rec:
                 invoice_line_vals.update({'account_analytic_id': rec.analytic_id.id})
         res = super(stock_move, self)._create_invoice_line_from_vals(cr, uid, move, invoice_line_vals, context=context)
