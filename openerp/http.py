@@ -48,6 +48,7 @@ from openerp.service.server import memory_info
 from openerp.service import security, model as service_model
 from openerp.tools.func import lazy_property
 from openerp.tools import ustr
+from openerp.tools import memcached_session
 
 _logger = logging.getLogger(__name__)
 rpc_request = logging.getLogger(__name__ + '.rpc.request')
@@ -1169,6 +1170,9 @@ class OpenERPSession(werkzeug.contrib.sessions.Session):
         return saved_actions.get("actions", {}).get(key)
 
 def session_gc(session_store):
+    # Memcached has it's own garbage collection
+    if openerp.tools.config.get('memcached', False):
+        return
     if random.random() < 0.001:
         # we keep session one week
         last_week = time.time() - 60*60*24*7
@@ -1278,7 +1282,10 @@ class Root(object):
 
     @lazy_property
     def session_store(self):
-        # Setup http sessions
+        # Setup http sessions 
+        if openerp.tools.config.get('memcached', False):
+            return memcached_session.MemcachedSessionStore(
+                session_class=OpenERPSession)
         path = openerp.tools.config.session_dir
         _logger.debug('HTTP sessions stored in: %s', path)
         return werkzeug.contrib.sessions.FilesystemSessionStore(path, session_class=OpenERPSession)
