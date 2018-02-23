@@ -2926,7 +2926,7 @@ class BaseModel(object):
                 raise except_orm('Programming Error', 'Many2Many destination model does not exist: `%s`' % (f._obj,))
             dest_model = self.pool[f._obj]
             ref = dest_model._table
-            cr.execute('CREATE TABLE "%s" ("%s" INTEGER NOT NULL, "%s" INTEGER NOT NULL, UNIQUE("%s","%s"))' % (m2m_tbl, col1, col2, col1, col2))
+            cr.execute('CREATE TABLE "%s" ("%s" INTEGER NOT NULL, "%s" INTEGER NOT NULL, PRIMARY KEY("%s","%s"))' % (m2m_tbl, col1, col2, col1, col2))
             # create foreign key references with ondelete=cascade, unless the targets are SQL views
             cr.execute("SELECT relkind FROM pg_class WHERE relkind IN ('v') AND relname=%s", (ref,))
             if not cr.fetchall():
