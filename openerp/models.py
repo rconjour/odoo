@@ -919,6 +919,8 @@ class BaseModel(object):
             [('model', '=', first_item._name), ('res_id', 'in', to_cache_ids)])
 
         for data_row in data:
+            if data_row.res_id not in to_cache_ids:
+                continue
             name = data_row.name
             if data_row.module:
                 name = '%s.%s' % (data_row.module, data_row.name)
