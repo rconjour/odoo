@@ -4275,7 +4275,7 @@ class BaseModel(object):
         # invalidate and mark new-style fields to recompute; do this before
         # setting other fields, because it can require the value of computed
         # fields, e.g., a one2many checking constraints on records
-        recs.modified(self._fields)
+        recs.modified(self._fields, create=True)
 
         # call the 'set' method of fields which are not classic_write
         upd_todo.sort(lambda x, y: self._columns[x].priority-self._columns[y].priority)
@@ -5712,7 +5712,7 @@ class BaseModel(object):
         self.env.invalidate(spec)
 
     @api.multi
-    def modified(self, fnames):
+    def modified(self, fnames, create=False):
         """ Notify that fields have been modified on ``self``. This invalidates
             the cache, and prepares the recomputation of stored function fields
             (new-style fields only).
@@ -5723,7 +5723,7 @@ class BaseModel(object):
         # each field knows what to invalidate and recompute
         spec = []
         for fname in fnames:
-            spec += self._fields[fname].modified(self)
+            spec += self._fields[fname].modified(self, create=create)
 
         cached_fields = {
             field
