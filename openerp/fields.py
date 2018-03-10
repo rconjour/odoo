@@ -964,7 +964,7 @@ class Field(object):
     # Notification when fields are modified
     #
 
-    def modified(self, records, create=False):
+    def modified(self, records, vals=None):
         """ Notify that field ``self`` has been modified on ``records``: prepare the
             fields/records to recompute, and return a spec indicating what to
             invalidate.
@@ -1515,18 +1515,18 @@ class _Relational(Field):
     def null(self, env):
         return env[self.comodel_name]
 
-    def modified(self, records, create=False):
+    def modified(self, records, vals=None):
         # Invalidate cache for self.inverse_fields, too. Note that recomputation
         # of fields that depend on self.inverse_fields is already covered by the
         # triggers (see above).
-        spec = super(_Relational, self).modified(records, create=create)
+        spec = super(_Relational, self).modified(records, vals=None)
         for invf in self.inverse_fields:
-            if create:
-                ids = records.sudo().mapped(self.name)._ids
+            if vals is None:
+                spec.append((invf, None))
+            elif vals and vals.get(self.name) and vals[self.name] != [(6, 0, [])]:
+                ids = self.convert_to_cache(vals[self.name], records.env[records._name]).ids
                 if ids:
                     spec.append((invf, ids))
-            else:
-                spec.append((invf, None))
         return spec
 
 
