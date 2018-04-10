@@ -860,9 +860,6 @@ class BaseModel(object):
         and inserts of ir_model_data references """
         first_item = self[0]
 
-        _logger.debug("Fetching XML id cache for object %s with id's %s" % (
-            first_item._name, records_cache.ids))
-
         def get_values_clause(dct):
             """ Generate values clause given a dictionary. Returns values clause and
             list of values in the correct order """
