@@ -67,7 +67,7 @@ from .osv.query import Query
 from .tools import frozendict, lazy_property, ormcache
 from .tools.config import config
 from .tools.func import frame_codeinfo
-from .tools.misc import CountingStream, DEFAULT_SERVER_DATETIME_FORMAT, DEFAULT_SERVER_DATE_FORMAT, pickle
+from .tools.misc import CountingStream, DEFAULT_SERVER_DATETIME_FORMAT, DEFAULT_SERVER_DATE_FORMAT, pickle, mute_logger
 from .tools.safe_eval import safe_eval as eval
 from .tools.translate import _
 
@@ -2868,10 +2868,12 @@ class BaseModel(object):
             sql_actions.sort(key=lambda x: x['order'])
             for sql_action in [action for action in sql_actions if action['execute']]:
                 try:
-                    cr.execute(sql_action['query'])
-                    cr.commit()
+                    with mute_logger('openerp.sql_db'):
+                        cr.execute(sql_action['query'])
+                        cr.commit()
                     _schema.debug(sql_action['msg_ok'])
-                except:
+                except Exception as e:
+                    _schema.warning(e)
                     _schema.warning(sql_action['msg_err'])
                     cr.rollback()
 
