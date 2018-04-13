@@ -807,7 +807,11 @@ class account_bank_statement_line(osv.osv):
 
         # Checks
         if st_line.journal_entry_id.id:
-            raise osv.except_osv(_('Error!'), _('The bank statement line was already reconciled.'))
+            raise osv.except_osv(
+                _('Error!'),
+                _('The bank statement line \'%s\' on bank statement %s was '
+                  'already reconciled.'
+                  % (st_line.name, st_line.statement_id.name)))
         for mv_line_dict in mv_line_dicts:
             for field in ['debit', 'credit', 'amount_currency']:
                 if field not in mv_line_dict:
@@ -815,7 +819,13 @@ class account_bank_statement_line(osv.osv):
             if mv_line_dict.get('counterpart_move_line_id'):
                 mv_line = aml_obj.browse(cr, uid, mv_line_dict.get('counterpart_move_line_id'), context=context)
                 if mv_line.reconcile_id:
-                    raise osv.except_osv(_('Error!'), _('A selected move line was already reconciled.'))
+                    raise osv.except_osv(
+                        _('Error!'),
+                        _('A selected move line (%s) was already reconciled '
+                          '(reconcile_id: %s) when trying to reconcile bank '
+                          'statement line \'%s\' from bank statement %s.'
+                          % (mv_line.name, mv_line.reconcile_id.name,
+                             st_line.name, st_line.statement_id.name)))
 
         # Create the move
         move_name = (st_line.statement_id.name or st_line.name) + "/" + str(st_line.sequence)
