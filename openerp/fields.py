@@ -1527,6 +1527,7 @@ class Many2one(_Relational):
         'ondelete': 'set null',         # what to do when value is deleted
         'auto_join': False,             # whether joins are generated upon search
         'delegate': False,              # whether self implements delegation
+        'index': True                   # it is adviced to add an index for all foreign key columns
     }
 
     def __init__(self, comodel_name=None, string=None, **kwargs):

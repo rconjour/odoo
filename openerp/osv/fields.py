@@ -696,6 +696,7 @@ class many2one(_column):
 
     def __init__(self, obj, string='unknown', auto_join=False, **args):
         args['ondelete'] = args.get('ondelete', 'set null')
+        args['select'] = args.get('select', True)
         _column.__init__(self, string=string, **args)
         self._obj = obj
         self._auto_join = auto_join
