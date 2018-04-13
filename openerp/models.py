@@ -47,7 +47,7 @@ import operator
 import pytz
 import re
 import time
-from collections import defaultdict, MutableMapping
+from collections import defaultdict, MutableMapping, OrderedDict
 from inspect import getmembers, currentframe
 from operator import itemgetter
 
@@ -855,14 +855,145 @@ class BaseModel(object):
             })
             return '__export__.' + name
 
+    def build_xml_id_cache(self, xml_id_cache):
+        """ Rewritten version of __export_xml_id to allow for bulk searches
+        and inserts of ir_model_data references """
+
+        def get_values_clause(dct):
+            """ Generate values clause given a dictionary. Returns values clause and
+            list of values in the correct order """
+            new_dict = OrderedDict(dct)
+            return (
+                ' (' + ','.join(
+                    '"%s"' % key for key in new_dict.keys()) + ') VALUES(' +
+                ','.join('%s' for i in range(len(new_dict))) + ')',
+                new_dict.values()
+            )
+
+        def get_values_clause_bulk(lst):
+            """ Generate values clause given a dictionary. Returns values clause and
+            list of values in the correct order (aggregate per 500 partners) """
+            fst_dict = lst and lst[0] or {}
+
+            query = ' (' + ','.join(
+                '"%s"' % key for key in
+                OrderedDict(fst_dict).keys()) + ') VALUES '
+
+            values_query = '(' + ','.join(
+                '%s' for i in range(len(fst_dict))) + ')'
+
+            values = []
+            count = 0
+            for dct in lst:
+                count += 1
+                query += values_query
+                values += OrderedDict(dct).values()
+
+                if count != len(lst):
+                    query += ', '
+
+            return (query, values)
+
+        if not self._is_an_ordinary_table():
+            raise Exception(
+                "You can not export the column ID of model %s, because the "
+                "table %s is not an ordinary table."
+                % (self._name, self._table))
+
+        # First try and see if any records are already cached
+        to_cache_ids = self.ids
+        if self._name in xml_id_cache:
+            already_cached = xml_id_cache[self._name].keys()
+            to_cache_ids = list(set(to_cache_ids) - set(already_cached))
+        else:
+            xml_id_cache[self._name] = {}
+
+        # Search for XML id's in the database, if there are any already created
+        # for that model and id's
+        ir_model_data = self.sudo().env['ir.model.data']
+        data = ir_model_data.search(
+            [('model', '=', self._name), ('res_id', 'in', to_cache_ids)])
+
+        for data_row in data:
+            if data_row.res_id not in to_cache_ids:
+                continue
+            name = data_row.name
+            if data_row.module:
+                name = '%s.%s' % (data_row.module, data_row.name)
+
+            xml_id_cache[self._name][data_row.res_id] = name
+            to_cache_ids.remove(data_row.res_id)
+
+        # Create new xml id's for the ones that could not be found
+        new_names = {}
+        for to_cache_id in to_cache_ids:
+            new_names[to_cache_id] = '%s_%s' % (self._table, to_cache_id)
+
+        existing_records = ir_model_data.search(
+            [('module', '=', '__export__'),
+             ('name', 'in', new_names.values())])
+
+        # If there are already records with the same name (in the rare case
+        # that that might happen)
+        postfix = 0
+        while existing_records:
+            postfix += 1
+            to_search_records = {}
+            for existing_record in existing_records:
+                res_id = existing_records.keys()[
+                    existing_records.values().index(existing_record.name)]
+                name = '%s_%s_%s' % (self._table, res_id, postfix)
+                new_names[res_id] = name
+                to_search_records[res_id] = name
+
+            existing_records = ir_model_data.search(
+                [('module', '=', '__export__'),
+                 ('name', 'in', to_search_records.values())])
+
+        # List all records that need a create
+        to_create = []
+        for res_id, name in new_names.items():
+            to_create += [{
+                'model': self._name,
+                'res_id': res_id,
+                'module': '__export__',
+                'name': name
+            }]
+
+            xml_id_cache[self._name][res_id] = '__export__.' + name
+
+        # Do a bulk insert in the database for new records
+        if to_create:
+            clause, values = get_values_clause_bulk(to_create)
+            self.env.cr.execute("INSERT INTO ir_model_data %s" % (clause), values)
+
     @api.multi
-    def __export_rows(self, fields):
+    def __export_rows(self, fields, all_records=False, xml_id_cache=False):
         """ Export fields of the records in ``self``.
 
             :param fields: list of lists of fields to traverse
             :return: list of lists of corresponding values
         """
         lines = []
+        if xml_id_cache is False:
+            xml_id_cache = {}
+        if all_records is False:
+            all_records = self
+
+        def _get_xml_id(record, records=False):
+            """ Prefer to use the cache and if it is not there, fetch/generate
+            the id's for the currect range of records, we can assume that in a
+            range, we allways need all the records in the cache """
+            if record._name in xml_id_cache:
+                if record.id in xml_id_cache[record._name]:
+                    return xml_id_cache[record._name][record.id]
+
+            records_cache = records or record
+
+            records_cache.build_xml_id_cache(xml_id_cache)
+
+            return xml_id_cache[record._name][record.id]
+
         for record in self:
             # main line of record, initially empty
             current = [''] * len(fields)
@@ -883,7 +1014,7 @@ class BaseModel(object):
                 if name == '.id':
                     current[i] = str(record.id)
                 elif name == 'id':
-                    current[i] = record.__export_xml_id()
+                    current[i] = _get_xml_id(record, all_records)
                 else:
                     field = record._fields[name]
                     value = record[name]
@@ -897,13 +1028,13 @@ class BaseModel(object):
 
                         # This is a special case, its strange behavior is intended!
                         if field.type == 'many2many' and len(path) > 1 and path[1] == 'id':
-                            xml_ids = [r.__export_xml_id() for r in value]
+                            xml_ids = [_get_xml_id(r, value) for r in value]
                             current[i] = ','.join(xml_ids) or False
                             continue
 
                         # recursively export the fields that follow name
                         fields2 = [(p[1:] if p and p[0] == name else []) for p in fields]
-                        lines2 = value.__export_rows(fields2)
+                        lines2 = value.__export_rows(fields2, self.mapped(name), xml_id_cache=xml_id_cache)
                         if lines2:
                             # merge first line with record's main line
                             for j, val in enumerate(lines2[0]):
