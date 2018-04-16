@@ -1341,6 +1341,10 @@ class function(_column):
         # function fields are not copied by default
         args['copy'] = args.get('copy', False)
 
+        # automatically create an index on stored Many2one columns
+        if store and type == 'many2one' and 'select' not in args:
+            args['select'] = True
+
         _column.__init__(self, **args)
 
         self._type = type
