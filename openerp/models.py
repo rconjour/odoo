@@ -208,6 +208,13 @@ def get_pg_type(f, type_override=None):
     return pg_type
 
 
+class QualifiedInteger(int):
+    # Dynapps customization
+    # Allow to pass an integer with additional attributes. Used to add the
+    # exact attribute on the result of _search(count=True)
+    pass
+
+
 class MetaModel(api.Meta):
     """ Metaclass for the models.
 
@@ -4849,10 +4856,19 @@ class BaseModel(object):
         if count:
             # Ignore order, limit and offset when just counting, they don't make sense and could
             # hurt performance
-            query_str = 'SELECT count(1) FROM ' + from_clause + where_str
-            cr.execute(query_str, where_clause_params)
-            res = cr.fetchone()
-            return res[0]
+            if context.get('count_estimate'):
+                query_str = (
+                    'SELECT exact, rows FROM count_estimate($$ FROM ' +
+                    from_clause + where_str + '$$)')
+                cr.execute(query_str, where_clause_params)
+                exact, rows = cr.fetchone()
+                result = QualifiedInteger(rows or 0)
+                result.exact = exact
+            else:
+                query_str = 'SELECT count(1) FROM ' + from_clause + where_str
+                cr.execute(query_str, where_clause_params)
+                result = cr.fetchone()[0]
+            return result
 
         limit_str = limit and ' limit %d' % limit or ''
         offset_str = offset and ' offset %d' % offset or ''
