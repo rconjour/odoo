@@ -566,6 +566,9 @@ class test_m2m(CreatorCase):
                 [u'', u'13'],
             ])
 
+    def test_xml_ids(self):
+        self.export(self.commands, fields=['value/id'])
+
     def test_multiple_records_name(self):
         self.assertEqual(
             self.export(self.commands, fields=['const', 'value']),
