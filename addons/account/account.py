@@ -680,8 +680,8 @@ class account_account(osv.osv):
         line_obj = self.pool.get('account.move.line')
         for account in self.browse(cr, uid, ids, context=context):
             old_type = account.type
-            account_ids = self.search(cr, uid, [('id', 'child_of', [account.id])])
-            if line_obj.search(cr, uid, [('account_id', 'in', account_ids)]):
+            account_ids = self.search(cr, uid, [('id', 'child_of', [account.id])], context=context)
+            if line_obj.search(cr, uid, [('account_id', 'in', account_ids)], context=context):
                 #Check for 'Closed' type
                 if old_type == 'closed' and new_type !='closed':
                     raise osv.except_osv(_('Warning!'), _("You cannot change the type of account from 'Closed' to any other type as it contains journal items!"))
