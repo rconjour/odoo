@@ -471,7 +471,8 @@ class account_move_line(osv.osv):
         'account_id': fields.many2one('account.account', 'Account', required=True, ondelete="cascade", domain=[('type','<>','view'), ('type', '<>', 'closed')], select=2),
         'move_id': fields.many2one('account.move', 'Journal Entry', ondelete="cascade", help="The move of this entry line.", select=2, required=True, auto_join=True),
         'narration': fields.related('move_id','narration', type='text', relation='account.move', string='Internal Note'),
-        'ref': fields.related('move_id', 'ref', string='Reference', type='char', store=True),
+        'ref': fields.related('move_id', 'ref', string='Reference', type='char',
+                              store={'account.move.line': (lambda self, cr, uid, ids, c={}: ids, ['move_id'], 10), 'account.move': (_get_move_lines, ['ref'], 20)}),
         'statement_id': fields.many2one('account.bank.statement', 'Statement', help="The bank statement used for bank reconciliation", select=1, copy=False),
         'reconcile_id': fields.many2one('account.move.reconcile', 'Reconcile', readonly=True, ondelete='set null', select=2, copy=False),
         'reconcile_partial_id': fields.many2one('account.move.reconcile', 'Partial Reconcile', readonly=True, ondelete='set null', select=2, copy=False),
@@ -509,7 +510,7 @@ class account_move_line(osv.osv):
         'account_tax_id':fields.many2one('account.tax', 'Tax', copy=False),
         'analytic_account_id': fields.many2one('account.analytic.account', 'Analytic Account'),
         'company_id': fields.related('account_id', 'company_id', type='many2one', relation='res.company',
-                            string='Company', store=True, readonly=True)
+                            string='Company', store={'account.move.line': (lambda self, cr, uid, ids, c={}: ids, ['account_id'], 10)}, readonly=True)
     }
 
     def _get_date(self, cr, uid, context=None):
