@@ -2852,12 +2852,15 @@ class BaseModel(object):
                 # constraint does not exists:
                 sql_actions['add']['execute'] = True
                 sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
-            elif unify_cons_text(con) not in [unify_cons_text(item['condef']) for item in existing_constraints]:
-                # constraint exists but its definition has changed:
-                sql_actions['drop']['execute'] = True
-                sql_actions['drop']['msg_ok'] = sql_actions['drop']['msg_ok'] % (existing_constraints[0]['condef'].lower(), )
-                sql_actions['add']['execute'] = True
-                sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
+            else:
+                cr.execute("SELECT description FROM pg_description d JOIN pg_constraint c "
+                           "ON c.oid = d.objoid AND conname = %s;", (conname,))
+                if con != (cr.fetchone()[0] if cr.rowcount else None):
+                    # constraint exists but its definition has changed:
+                    sql_actions['drop']['execute'] = True
+                    sql_actions['drop']['msg_ok'] = sql_actions['drop']['msg_ok'] % (existing_constraints[0]['condef'].lower(), )
+                    sql_actions['add']['execute'] = True
+                    sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
 
             # we need to add the constraint:
             sql_actions = [item for item in sql_actions.values()]
@@ -2866,6 +2869,9 @@ class BaseModel(object):
                 try:
                     with mute_logger('openerp.sql_db'):
                         cr.execute(sql_action['query'])
+                        cr.commit()
+                    if 'ADD CONSTRAINT' in sql_action['query']:
+                        cr.execute('COMMENT ON CONSTRAINT "{}" ON "{}" IS %s'.format(conname, self._table), (con,))
                         cr.commit()
                     _schema.debug(sql_action['msg_ok'])
                 except Exception as e:
