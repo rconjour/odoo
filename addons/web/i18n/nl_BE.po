@@ -93,8 +93,8 @@ msgstr "%d jaar geleden"
 #. openerp-web
 #: code:addons/web/static/src/js/view_list.js:422
 #, python-format
-msgid "%d-%d of %d"
-msgstr "%d-%d van %d"
+msgid "%d-%d of %s%d"
+msgstr "%d-%d van %s%d"
 
 #. module: web
 #. openerp-web
