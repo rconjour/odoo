@@ -67,7 +67,7 @@ from .osv.query import Query
 from .tools import frozendict, lazy_property, ormcache
 from .tools.config import config
 from .tools.func import frame_codeinfo
-from .tools.misc import CountingStream, DEFAULT_SERVER_DATETIME_FORMAT, DEFAULT_SERVER_DATE_FORMAT, pickle
+from .tools.misc import CountingStream, DEFAULT_SERVER_DATETIME_FORMAT, DEFAULT_SERVER_DATE_FORMAT, pickle, mute_logger
 from .tools.safe_eval import safe_eval as eval
 from .tools.translate import _
 
@@ -2852,22 +2852,30 @@ class BaseModel(object):
                 # constraint does not exists:
                 sql_actions['add']['execute'] = True
                 sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
-            elif unify_cons_text(con) not in [unify_cons_text(item['condef']) for item in existing_constraints]:
-                # constraint exists but its definition has changed:
-                sql_actions['drop']['execute'] = True
-                sql_actions['drop']['msg_ok'] = sql_actions['drop']['msg_ok'] % (existing_constraints[0]['condef'].lower(), )
-                sql_actions['add']['execute'] = True
-                sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
+            else:
+                cr.execute("SELECT description FROM pg_description d JOIN pg_constraint c "
+                           "ON c.oid = d.objoid AND conname = %s;", (conname,))
+                if con != (cr.fetchone()[0] if cr.rowcount else None):
+                    # constraint exists but its definition has changed:
+                    sql_actions['drop']['execute'] = True
+                    sql_actions['drop']['msg_ok'] = sql_actions['drop']['msg_ok'] % (existing_constraints[0]['condef'].lower(), )
+                    sql_actions['add']['execute'] = True
+                    sql_actions['add']['msg_err'] = sql_actions['add']['msg_err'] % (sql_actions['add']['query'], )
 
             # we need to add the constraint:
             sql_actions = [item for item in sql_actions.values()]
             sql_actions.sort(key=lambda x: x['order'])
             for sql_action in [action for action in sql_actions if action['execute']]:
                 try:
-                    cr.execute(sql_action['query'])
-                    cr.commit()
+                    with mute_logger('openerp.sql_db'):
+                        cr.execute(sql_action['query'])
+                        cr.commit()
+                    if 'ADD CONSTRAINT' in sql_action['query']:
+                        cr.execute('COMMENT ON CONSTRAINT "{}" ON "{}" IS %s'.format(conname, self._table), (con,))
+                        cr.commit()
                     _schema.debug(sql_action['msg_ok'])
-                except:
+                except Exception as e:
+                    _schema.warning(e)
                     _schema.warning(sql_action['msg_err'])
                     cr.rollback()
 
