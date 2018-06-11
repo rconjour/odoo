@@ -691,7 +691,7 @@ class many2one(_column):
 
     __slots__ = ['_obj', '_auto_join']
 
-    def __init__(self, obj, string='unknown', auto_join=False, **args):
+    def __init__(self, obj, string='unknown', auto_join=True, **args):
         args['ondelete'] = args.get('ondelete', 'set null')
         _column.__init__(self, string=string, **args)
         self._obj = obj
@@ -742,7 +742,7 @@ class one2many(_column):
 
     __slots__ = ['_obj', '_fields_id', '_limit', '_auto_join']
 
-    def __init__(self, obj, fields_id, string='unknown', limit=None, auto_join=False, **args):
+    def __init__(self, obj, fields_id, string='unknown', limit=None, auto_join=True, **args):
         # one2many columns are not copied by default
         args['copy'] = args.get('copy', False)
         args['_prefetch'] = args.get('_prefetch', False)
