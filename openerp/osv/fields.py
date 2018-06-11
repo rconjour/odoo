@@ -1017,12 +1017,14 @@ class many2many(_column):
 
         def unlink_all():
             # remove all records for which user has access rights
-            clauses, params, tables = obj.pool.get('ir.rule').domain_get(cr, user, obj._name, context=context)
-            cond = " AND ".join(clauses) if clauses else "1=1"
-            query = """ DELETE FROM {rel} USING {tables}
-                        WHERE {rel}.{id1}=%s AND {rel}.{id2}={table}.id AND {cond}
-                    """.format(rel=rel, id1=id1, id2=id2,
-                               table=obj._table, tables=','.join(tables), cond=cond)
+            rule_query = obj.pool.get('ir.rule').domain_get(cr, user, obj._name, context=context)
+            from_clause, where_clause, params = rule_query.get_sql()
+            where_clause = where_clause or " 1=1 "
+            query = """
+                DELETE FROM {rel} WHERE {rel}.{id1}=%s AND {rel}.{id2} IN (
+                    SELECT {table}.id FROM {from_clause} WHERE {where_clause})
+                    """.format(rel=rel, id1=id1, id2=id2, table=obj._table,
+                               from_clause=from_clause, where_clause=where_clause)
             cr.execute(query, [id] + params)
 
         for act in values:
