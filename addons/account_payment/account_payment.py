@@ -265,27 +265,27 @@ class payment_line(osv.osv):
                 date = time.strftime('%Y-%m-%d')
         return date
 
-    def _get_ml_inv_ref(self, cr, uid, ids, *a):
+    def _get_ml_inv_ref(self, cr, uid, ids, field, arg, context=None):
         res = {}
-        for id in self.browse(cr, uid, ids):
+        for id in self.browse(cr, uid, ids, context=context):
             res[id.id] = False
             if id.move_line_id:
                 if id.move_line_id.invoice:
                     res[id.id] = id.move_line_id.invoice.id
         return res
 
-    def _get_ml_maturity_date(self, cr, uid, ids, *a):
+    def _get_ml_maturity_date(self, cr, uid, ids, field, arg, context=None):
         res = {}
-        for id in self.browse(cr, uid, ids):
+        for id in self.browse(cr, uid, ids, context=context):
             if id.move_line_id:
                 res[id.id] = id.move_line_id.date_maturity
             else:
                 res[id.id] = False
         return res
 
-    def _get_ml_created_date(self, cr, uid, ids, *a):
+    def _get_ml_created_date(self, cr, uid, ids, field, arg, context=None):
         res = {}
-        for id in self.browse(cr, uid, ids):
+        for id in self.browse(cr, uid, ids, context=context):
             if id.move_line_id:
                 res[id.id] = id.move_line_id.date_created
             else:
