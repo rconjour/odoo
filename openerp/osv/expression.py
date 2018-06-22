@@ -829,7 +829,10 @@ class expression(object):
                 #                    field_column_obj, origina_parent_model), ... }
                 next_model = model.pool[model._inherit_fields[path[0]][0]]
                 leaf.add_join_context(next_model, model._inherits[next_model._name], 'id', model._inherits[next_model._name])
-                push(leaf)
+                if model._columns[model._inherits[next_model._name]]._auto_join:
+                    push(create_substitution_leaf(leaf, (left, operator, right), next_model))
+                else:
+                    push(leaf)
 
             elif left == 'id' and operator == 'child_of':
                 ids2 = to_ids(right, model, context)
