@@ -3698,15 +3698,17 @@ class BaseModel(object):
                 raise except_orm(_('Access Denied'),
                                  _('For this kind of document, you may only access records you created yourself.\n\n(Document type: %s)') % (self._description,))
         else:
-            where_clause, where_params, tables = self.pool.get('ir.rule').domain_get(cr, uid, self._name, operation, context=context)
-            if where_clause:
-                where_clause = ' and ' + ' and '.join(where_clause)
-                for sub_ids in cr.split_for_in_conditions(ids):
-                    cr.execute('SELECT ' + self._table + '.id FROM ' + ','.join(tables) +
-                               ' WHERE ' + self._table + '.id IN %s' + where_clause,
-                               [sub_ids] + where_params)
-                    returned_ids = [x['id'] for x in cr.dictfetchall()]
-                    self._check_record_rules_result_count(cr, uid, sub_ids, returned_ids, operation, context=context)
+            query = self.pool.get('ir.rule').domain_get(cr, uid, self._name, operation, context=context)
+            table = '"%s"' % self._table
+            for sub_ids in cr.split_for_in_conditions(ids):
+                chunk_query = query + Query([table], [table + '.id IN %s'], [sub_ids])
+                from_clause, where_clause, params = chunk_query.get_sql()
+                cr.execute(
+                    "SELECT DISTINCT({table}.id) FROM {from_clause} WHERE {where_clause}".format(
+                        table=table, from_clause=from_clause, where_clause=where_clause or '1=1'),
+                    params)
+                returned_ids = [x['id'] for x in cr.dictfetchall()]
+                self._check_record_rules_result_count(cr, uid, sub_ids, returned_ids, operation, context=context)
 
     def create_workflow(self, cr, uid, ids, context=None):
         """Create a workflow instance for each given record IDs."""
@@ -4662,15 +4664,19 @@ class BaseModel(object):
             else:
                 domain = [('active', '=', 1)]
 
+        joins = {}
         if domain:
             e = expression.expression(cr, user, domain, self, context)
             tables = e.get_tables()
             where_clause, where_params = e.to_sql()
             where_clause = where_clause and [where_clause] or []
+            joins = e.joins
         else:
             where_clause, where_params, tables = [], [], ['"%s"' % self._table]
 
-        return Query(tables, where_clause, where_params)
+        query = Query(tables, where_clause, where_params)
+        query.joins = joins
+        return query
 
     def _check_qorder(self, word):
         if not regex_order.match(word):
@@ -4686,46 +4692,43 @@ class BaseModel(object):
         if uid == SUPERUSER_ID:
             return
 
-        def apply_rule(added_clause, added_params, added_tables, parent_model=None):
+        def apply_rule(rule_query, parent_model=None):
             """ :param parent_model: name of the parent model, if the added
                     clause comes from a parent model
             """
-            if added_clause:
+            if rule_query.where_clause:
                 if parent_model:
                     # as inherited rules are being applied, we need to add the missing JOIN
                     # to reach the parent table (if it was not JOINed yet in the query)
                     parent_alias = self._inherits_join_add(self, parent_model, query)
                     # inherited rules are applied on the external table -> need to get the alias and replace
                     parent_table = self.pool[parent_model]._table
-                    added_clause = [clause.replace('"%s"' % parent_table, '"%s"' % parent_alias) for clause in added_clause]
+                    rule_query.where_clause = [clause.replace('"%s"' % parent_table, '"%s"' % parent_alias) for clause in rule_query.where_clause]
                     # change references to parent_table to parent_alias, because we now use the alias to refer to the table
                     new_tables = []
-                    for table in added_tables:
+                    for table in rule_query.tables:
                         # table is just a table name -> switch to the full alias
                         if table == '"%s"' % parent_table:
                             new_tables.append('"%s" as "%s"' % (parent_table, parent_alias))
+                            if parent_table in rule_query.joins:
+                                rule_query.joins[parent_alias] = rule_query.joins.pop(parent_table)
                         # table is already a full statement -> replace reference to the table to its alias, is correct with the way aliases are generated
                         else:
                             new_tables.append(table.replace('"%s"' % parent_table, '"%s"' % parent_alias))
-                    added_tables = new_tables
-                query.where_clause += added_clause
-                query.where_clause_params += added_params
-                for table in added_tables:
-                    if table not in query.tables:
-                        query.tables.append(table)
+                    rule_query.tables = new_tables
+                query.append(rule_query)
                 return True
             return False
 
         # apply main rules on the object
         rule_obj = self.pool.get('ir.rule')
-        rule_where_clause, rule_where_clause_params, rule_tables = rule_obj.domain_get(cr, uid, self._name, mode, context=context)
-        apply_rule(rule_where_clause, rule_where_clause_params, rule_tables)
+        rule_query = rule_obj.domain_get(cr, uid, self._name, mode, context=context)
+        apply_rule(rule_query)
 
         # apply ir.rules from the parents (through _inherits)
         for inherited_model in self._inherits:
-            rule_where_clause, rule_where_clause_params, rule_tables = rule_obj.domain_get(cr, uid, inherited_model, mode, context=context)
-            apply_rule(rule_where_clause, rule_where_clause_params, rule_tables,
-                       parent_model=inherited_model)
+            rule_query = rule_obj.domain_get(cr, uid, inherited_model, mode, context=context)
+            apply_rule(rule_query, parent_model=inherited_model)
 
     def _generate_m2o_order_by(self, alias, order_field, query, reverse_direction, seen):
         """
