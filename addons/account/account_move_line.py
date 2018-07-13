@@ -452,15 +452,12 @@ class account_move_line(osv.osv):
         return res
 
     def _get_move_from_reconcile(self, cr, uid, ids, context=None):
-        move = {}
+        move_line_ids = []
         for r in self.pool.get('account.move.reconcile').browse(cr, uid, ids, context=context):
             for line in r.line_partial_ids:
-                move[line.move_id.id] = True
+                move_line_ids.append(line.id)
             for line in r.line_id:
-                move[line.move_id.id] = True
-        move_line_ids = []
-        if move:
-            move_line_ids = self.pool.get('account.move.line').search(cr, uid, [('move_id','in',move.keys())], context=context)
+                move_line_ids.append(line.id)
         return move_line_ids
 
 
