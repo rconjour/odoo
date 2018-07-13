@@ -23,6 +23,7 @@ import time
 from openerp import SUPERUSER_ID
 from openerp import tools
 from openerp.osv import fields, osv, expression
+from openerp.osv.query import Query
 from openerp.tools.safe_eval import safe_eval as eval
 from openerp.tools.misc import unquote as unquote
 
@@ -153,9 +154,8 @@ class ir_rule(osv.osv):
             # involve objects on which the real uid has no acces rights.
             # This means also there is no implicit restriction (e.g. an object
             # references another object the user can't see).
-            query = self.pool[model_name]._where_calc(cr, SUPERUSER_ID, dom, active_test=False, context=context)
-            return query.where_clause, query.where_clause_params, query.tables
-        return [], [], ['"' + self.pool[model_name]._table + '"']
+            return self.pool[model_name]._where_calc(cr, SUPERUSER_ID, dom, active_test=False, context=context)
+        return Query(['"' + self.pool[model_name]._table + '"'])
 
     def unlink(self, cr, uid, ids, context=None):
         res = super(ir_rule, self).unlink(cr, uid, ids, context=context)
