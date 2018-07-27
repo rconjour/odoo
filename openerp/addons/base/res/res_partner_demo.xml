@@ -92,6 +92,7 @@
             <field name="phone">+32 10 588 558</field>
             <field name="website">http://www.agrolait.com</field>
             <field name="image" type="base64" file="base/static/img/res_partner_2-image.jpg"/>
+            <field name="lang">en_US</field>
         </record>
         <record id="res_partner_3" model="res.partner">
             <field name="name">China Export</field>
