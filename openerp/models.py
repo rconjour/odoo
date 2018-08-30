@@ -42,6 +42,7 @@
 import datetime
 import functools
 import itertools
+import json
 import logging
 import operator
 import pytz
@@ -5775,10 +5776,10 @@ class BaseModel(object):
             valuemap = {}
             for rec in recs:
                 try:
-                    values = tuple(sorted(
+                    values = json.dumps(
                         rec._convert_to_write({
                             name: rec[name] for name in names
-                        }).items()))
+                        }))
                     if values in valuemap:
                         valuemap[values] |= rec
                     else:
@@ -5788,7 +5789,7 @@ class BaseModel(object):
                                   names, recs._name)
             for values, records in valuemap.items():
                 # One _write call per combination of values
-                values = dict(values)
+                values = json.loads(values)
                 try:
                     with records.env.norecompute():
                         map(records._recompute_done, field.computed_fields)
