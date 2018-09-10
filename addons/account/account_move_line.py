@@ -199,14 +199,16 @@ class account_move_line(osv.osv):
 
     def create_analytic_lines(self, cr, uid, ids, context=None):
         acc_ana_line_obj = self.pool.get('account.analytic.line')
-        for obj_line in self.browse(cr, uid, ids, context=context):
-            if obj_line.analytic_lines:
-                acc_ana_line_obj.unlink(cr,uid,[obj.id for obj in obj_line.analytic_lines])
-            if obj_line.analytic_account_id:
-                if not obj_line.journal_id.analytic_journal_id:
-                    raise osv.except_osv(_('No Analytic Journal!'),_("You have to define an analytic journal on the '%s' journal!") % (obj_line.journal_id.name, ))
-                vals_line = self._prepare_analytic_line(cr, uid, obj_line, context=context)
-                acc_ana_line_obj.create(cr, uid, vals_line)
+        ana_ids = acc_ana_line_obj.search(cr, uid, [('move_id', 'in', ids)], context=context)
+        if ana_ids:
+            acc_ana_line_obj.unlink(cr, uid, ana_ids, context=context)
+        move_line_ids = self.search(cr, uid, [
+            ('id', 'in', ids), ('analytic_account_id', '!=', False)], context=context)
+        for obj_line in self.browse(cr, uid, move_line_ids, context=context):
+            if not obj_line.journal_id.analytic_journal_id:
+                raise osv.except_osv(_('No Analytic Journal!'),_("You have to define an analytic journal on the '%s' journal!") % (obj_line.journal_id.name, ))
+            vals_line = self._prepare_analytic_line(cr, uid, obj_line, context=context)
+            acc_ana_line_obj.create(cr, uid, vals_line)
         return True
 
     def _default_get_move_form_hook(self, cursor, user, data):
