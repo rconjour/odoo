@@ -25,6 +25,7 @@
 from collections import Mapping, defaultdict
 import logging
 import os
+from psycopg2 import InternalError
 import threading
 
 import openerp
@@ -224,8 +225,10 @@ class Registry(Mapping):
         but modified to execute the exact count when the estimation
         is lower than 100.000, and indicate the status of the returned
         value. """
-        cr.execute(
-            """
+        try:
+            with cr.savepoint():
+                cr.execute(
+                    """
             DO $$BEGIN
               IF NOT EXISTS (
                 SELECT 1 FROM pg_type WHERE typname = 'qualified_count')
@@ -260,6 +263,10 @@ class Registry(Mapping):
             END;
             $$ LANGUAGE plpgsql VOLATILE STRICT;
         """)
+        except InternalError:
+            # Function is simultaneously updated in another transaction,
+            # which raises InternalError: tuple concurrently updated
+            pass
 
     @classmethod
     def setup_multi_process_signaling(cls, cr):
