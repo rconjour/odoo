@@ -1684,7 +1684,7 @@ class account_invoice(osv.Model):
         res = super(account_invoice, self).invoice_validate(cr, uid, ids, context=context)
         purchase_order_obj = self.pool.get('purchase.order')
         # read access on purchase.order object is not required
-        if not purchase_order_obj.check_access_rights(cr, uid, 'read', raise_exception=False):
+        if not purchase_order_obj.check_access_rights(cr, uid, 'write', raise_exception=False):
             user_id = SUPERUSER_ID
         else:
             user_id = uid
