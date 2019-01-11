@@ -233,7 +233,7 @@ class ir_cron(osv.osv):
                                       AND active
                                       AND nextcall <= (now() at time zone 'UTC')
                                       AND id=%s
-                                   FOR UPDATE NOWAIT""",
+                                   FOR UPDATE SKIP LOCKED""",
                                (job['id'],), log_exceptions=False)
 
                 locked_job = lock_cr.fetchone()
