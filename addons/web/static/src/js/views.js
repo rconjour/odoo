@@ -1273,10 +1273,12 @@ instance.web.Sidebar = instance.web.Widget.extend({
                 new instance.web.Dialog(this, { title: _t("Warning"), size: 'medium',}, $("<div />").text(_t("You must choose at least one record."))).open();
                 return false;
             }
+            // Return full dataset IDS if all rows selected
+            var unchecked = self.getParent().$el.find("th.oe_list_record_selector input:unchecked");
             var dataset = self.getParent().dataset;
             var active_ids_context = {
                 active_id: ids[0],
-                active_ids: ids,
+                active_ids: (unchecked.length === 0) ? dataset.ids : ids,
                 active_model: dataset.model,
             };
 
