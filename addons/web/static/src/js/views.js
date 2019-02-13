@@ -1273,10 +1273,15 @@ instance.web.Sidebar = instance.web.Widget.extend({
                 new instance.web.Dialog(this, { title: _t("Warning"), size: 'medium',}, $("<div />").text(_t("You must choose at least one record."))).open();
                 return false;
             }
+            // Return full dataset IDS if all rows selected
+            var view_type = self.getParent().ViewManager.$el.attr("data-view-type");
+            var all_checkboxes = $("th.oe_list_record_selector");
+            var unchecked = all_checkboxes.find("input:checkbox:not(:checked)");
             var dataset = self.getParent().dataset;
+
             var active_ids_context = {
                 active_id: ids[0],
-                active_ids: ids,
+                active_ids: (view_type === "list" && all_checkboxes.length > 0 && unchecked.length === 0) ? dataset.ids : ids,
                 active_model: dataset.model,
             };
 
