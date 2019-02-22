@@ -42,6 +42,7 @@
 import datetime
 import functools
 import itertools
+import json
 import logging
 import operator
 import pytz
@@ -4590,6 +4591,7 @@ class BaseModel(object):
             val = todo[key]
             if key:
                 # use admin user for accessing objects having rules defined on store fields
+                updatemap = {}
                 result = self._columns[val[0]].get(cr, self, ids, val, SUPERUSER_ID, context=context)
                 for id, value in result.items():
                     if field_flag:
@@ -4608,11 +4610,15 @@ class BaseModel(object):
                                 pass
                         updates.append((v, column._symbol_set[0], column._symbol_set[1](value[v])))
                     if updates:
-                        query = 'UPDATE "%s" SET %s WHERE id = %%s' % (
-                            self._table, ','.join('"%s"=%s' % u[:2] for u in updates),
-                        )
-                        params = tuple(u[2] for u in updates)
-                        cr.execute(query, params + (id,))
+                        updatemap.setdefault(tuple(updates), []).append(id)
+
+                for updates, ids in updatemap.items():
+                    # One insert statement per combination of values
+                    query = 'UPDATE "%s" SET %s WHERE id in %%s' % (
+                        self._table, ','.join('"%s"=%s' % u[:2] for u in updates),
+                    )
+                    params = tuple(u[2] for u in updates)
+                    cr.execute(query, params + (tuple(ids),))
 
             else:
                 for f in val:
@@ -4624,16 +4630,20 @@ class BaseModel(object):
                             if r in field_dict.keys():
                                 if f in field_dict[r]:
                                     result.pop(r)
+                    updatemap = {}
                     for id, value in result.items():
                         if column._type == 'many2one':
                             try:
                                 value = value[0]
                             except:
                                 pass
-                        query = 'UPDATE "%s" SET "%s"=%s WHERE id = %%s' % (
+                        updatemap.setdefault(column._symbol_set[1](value), []).append(id)
+                    for value, ids in updatemap.items():
+                        # One insert statement per value
+                        query = 'UPDATE "%s" SET "%s"=%s WHERE id in %%s' % (
                             self._table, f, column._symbol_set[0],
                         )
-                        cr.execute(query, (column._symbol_set[1](value), id))
+                        cr.execute(query, (value, tuple(ids),))
 
         # invalidate and mark new-style fields to recompute
         self.browse(cr, uid, ids, context).modified(fields)
@@ -5952,16 +5962,41 @@ class BaseModel(object):
                 for f in field.computed_fields
                 if f.store and self.env.field_todo(f)
             ]
+            valuemap = {}
             for rec in recs:
                 try:
-                    values = rec._convert_to_write({
-                        name: rec[name] for name in names
-                    })
-                    with rec.env.norecompute():
-                        map(rec._recompute_done, field.computed_fields)
-                        rec._write(values)
+                    values = json.dumps(
+                        rec._convert_to_write({
+                            name: rec[name] for name in names
+                        }))
+                    if values in valuemap:
+                        valuemap[values] |= rec
+                    else:
+                        valuemap[values] = rec
                 except MissingError:
-                    pass
+                    _logger.debug('MissingError when computing fields %s of model %s',
+                                  names, recs._name)
+            for values, records in valuemap.items():
+                # One _write call per combination of values
+                values = json.loads(values)
+                try:
+                    with records.env.norecompute():
+                        map(records._recompute_done, field.computed_fields)
+                        records._write(values)
+                except MissingError:  # Fallback on individual write
+                    _logger.debug(
+                        'MissingError when writing computed fields %s '
+                        'on multiple records of model %s',
+                        names, recs._name)
+                    for rec in records:
+                        try:
+                            with records.env.norecompute():
+                                map(rec._recompute_done, field.computed_fields)
+                                rec._write(values)
+                        except MissingError:
+                            _logger.debug(
+                                'MissingError when writing computed fields %s '
+                                'on %s#%s', names, rec._name, rec.id)
             # mark the computed fields as done
             map(recs._recompute_done, field.computed_fields)
 
