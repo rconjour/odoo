@@ -349,6 +349,10 @@ def generate_table_alias(src_table_alias, joined_tables=[]):
         return '%s' % alias, '%s' % _quote(alias)
     for link in joined_tables:
         alias += '__' + link[1]
+    alias = truncate_alias(alias)
+    return '%s' % alias, '%s as %s' % (_quote(joined_tables[-1][0]), _quote(alias))
+
+def truncate_alias(alias):
     # Use an alternate alias scheme if length exceeds the PostgreSQL limit
     # of 63 characters.
     if len(alias) >= 64:
@@ -359,8 +363,7 @@ def generate_table_alias(src_table_alias, joined_tables=[]):
         ALIAS_PREFIX_LENGTH = 63 - len(alias_hash) - 1
         alias = "%s_%s" % (
             alias[:ALIAS_PREFIX_LENGTH], alias_hash)
-    return '%s' % alias, '%s as %s' % (_quote(joined_tables[-1][0]), _quote(alias))
-
+    return alias
 
 def get_alias_from_query(from_query):
     """ :param string from_query: is something like :
@@ -555,24 +558,27 @@ class ExtendedLeaf(object):
         alias, alias_statement = generate_table_alias(self._models[0]._table, links)
         return alias
 
-    def add_join_context(self, model, lhs_col, table_col, link):
+    def add_join_context(self, model, lhs_col, table_col, link, join='JOIN'):
         """ See above comments for more details. A join context is a tuple like:
                 ``(lhs, model, lhs_col, col, link)``
 
             After adding the join, the model of the current leaf is updated.
         """
-        self.join_context.append((self.model, model, lhs_col, table_col, link))
+        self.join_context.append((self.model, model, lhs_col, table_col, link, join))
         self._models.append(model)
         self.model = model
 
-    def get_join_conditions(self):
-        conditions = []
+    def fetch_join_contexts(self, contexts):
+        """ Collect the join contexts into the contexts dictionary in a format
+        compatible with osv.query.Query """
         alias = self._models[0]._table
         for context in self.join_context:
             previous_alias = alias
-            alias += '__' + context[4]
-            conditions.append('"%s"."%s"="%s"."%s"' % (previous_alias, context[2], alias, context[3]))
-        return conditions
+            alias = truncate_alias (alias + '__' + context[4])
+            table_joins = contexts.setdefault(previous_alias, [])
+            join = (alias, context[2], context[3], context[5])
+            if join not in table_joins:
+                table_joins.append(join)
 
     def get_tables(self):
         tables = set()
@@ -652,7 +658,7 @@ class expression(object):
                 and prepared
         """
         self._unaccent = get_unaccent_wrapper(cr)
-        self.joins = []
+        self.joins = {}
         self.root_model = table
 
         # normalize and prepare the expression for parsing
@@ -763,6 +769,15 @@ class expression(object):
                 and validated. """
             self.result.append(leaf)
 
+        def get_not_null_leafs(leaf, column, operator):
+            """ Fetch not null leafs in the current join context. Such leafs
+            need to be pushed after pusing an auto_join leaf with a negative
+            operator. """
+            if operator in NEGATIVE_TERM_OPERATORS:
+                return [create_substitution_leaf(leaf, (column, '!=', False)),
+                        create_substitution_leaf(leaf, AND_OPERATOR)]
+            return []
+
         self.result = []
         self.stack = [ExtendedLeaf(leaf, self.root_model) for leaf in self.expression]
         # process from right to left; expression is from left to right
@@ -814,7 +829,10 @@ class expression(object):
                 #                    field_column_obj, origina_parent_model), ... }
                 next_model = model.pool[model._inherit_fields[path[0]][0]]
                 leaf.add_join_context(next_model, model._inherits[next_model._name], 'id', model._inherits[next_model._name])
-                push(leaf)
+                if model._columns[model._inherits[next_model._name]]._auto_join:
+                    push(create_substitution_leaf(leaf, (left, operator, right), next_model))
+                else:
+                    push(leaf)
 
             elif left == 'id' and operator == 'child_of':
                 ids2 = to_ids(right, model, context)
@@ -836,6 +854,15 @@ class expression(object):
             #      src_table is replaced by remaining on dst_table, and set for re-evaluation
             #    - if a domain is defined on the column, add it into evaluation
             #      on the relational table
+            #    - we want the left join to allow for sibling clauses to select records
+            #      without the field set, but under the scope of this clause we can add the
+            #      implicit column != False so that results in Odoo 8.0 don't change. In the
+            #      case of one2many columns, this causes a separate query for the subselection
+            #      of ids of the kind that we want to avoid by applying auto_join, but it is
+            #      only needed in the case of a negative search operator.
+            #      These semantics are to be reconsidered in master anyway because of analogy
+            #      with filtering on recordsets where (res.partner,).filtered(
+            #          lambda l: l.user_id.login != 'admin') yields partners without user_id set.
             # -> many2one, many2many, one2many: replace by an equivalent computed
             #    domain, given by recursively searching on the remaining of the path
             # -> note: hack about columns.property should not be necessary anymore
@@ -844,12 +871,16 @@ class expression(object):
 
             elif len(path) > 1 and column and column._type == 'many2one' and column._auto_join:
                 # res_partner.state_id = res_partner__state_id.id
-                leaf.add_join_context(comodel, path[0], 'id', path[0])
+                not_null_leafs = get_not_null_leafs(leaf, path[0], operator)
+                leaf.add_join_context(comodel, path[0], 'id', path[0], 'LEFT JOIN')
                 push(create_substitution_leaf(leaf, (path[1], operator, right), comodel))
+                for not_null_leaf in not_null_leafs:
+                    push(not_null_leaf)
 
             elif len(path) > 1 and column and column._type == 'one2many' and column._auto_join:
                 # res_partner.id = res_partner__bank_ids.partner_id
-                leaf.add_join_context(comodel, 'id', column._fields_id, path[0])
+                not_null_leafs = get_not_null_leafs(leaf, path[0], operator)
+                leaf.add_join_context(comodel, 'id', column._fields_id, path[0], 'LEFT JOIN')
                 domain = column._domain(model) if callable(column._domain) else column._domain
                 push(create_substitution_leaf(leaf, (path[1], operator, right), comodel))
                 if domain:
@@ -857,6 +888,8 @@ class expression(object):
                     for elem in reversed(domain):
                         push(create_substitution_leaf(leaf, elem, comodel))
                     push(create_substitution_leaf(leaf, AND_OPERATOR, comodel))
+                for not_null_leaf in not_null_leafs:
+                    push(not_null_leaf)
 
             elif len(path) > 1 and column and column._auto_join:
                 raise NotImplementedError('_auto_join attribute not supported on many2many column %s' % left)
@@ -1127,8 +1160,7 @@ class expression(object):
 
         joins = set()
         for leaf in self.result:
-            joins |= set(leaf.get_join_conditions())
-        self.joins = list(joins)
+            leaf.fetch_join_contexts(self.joins)
 
     def __leaf_to_sql(self, eleaf):
         model = eleaf.model
@@ -1287,9 +1319,6 @@ class expression(object):
 
         assert len(stack) == 1
         query = stack[0]
-        joins = ' AND '.join(self.joins)
-        if joins:
-            query = '(%s) AND %s' % (joins, query)
 
         return query, tools.flatten(params)
 
