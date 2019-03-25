@@ -18,6 +18,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
+from copy import deepcopy
 
 
 
@@ -137,22 +138,52 @@ class Query(object):
 
         def add_joins_for_table(table, query_from):
             for (dest_table, lhs_col, col, join) in self.joins.get(table, []):
-                tables_to_process.remove(alias_mapping[dest_table])
                 query_from += ' %s %s ON ("%s"."%s" = "%s"."%s")' % \
                     (join, alias_mapping[dest_table], table, lhs_col, dest_table, col)
                 query_from = add_joins_for_table(dest_table, query_from)
             return query_from
 
+        joined_aliases = [
+            join[0]
+            for joined_table in self.joins.values()
+            for join in joined_table]
+        pos = 0
         for table in tables_to_process:
-            query_from += table
             table_alias = get_alias_from_query(table)[1]
+            if table_alias in joined_aliases:
+                continue
+            if pos > 0:
+                query_from += ','
+            pos += 1
+            query_from += table
             if table_alias in self.joins:
                 query_from = add_joins_for_table(table_alias, query_from)
-            query_from += ','
-        query_from = query_from[:-1]  # drop last comma
         return query_from, " AND ".join(self.where_clause), self.where_clause_params
 
     def __str__(self):
         return '<osv.Query: "SELECT ... FROM %s WHERE %s" with params: %r>' % self.get_sql()
+
+    def append(self, query):
+        """ Include another query into self """
+        self.where_clause += query.where_clause
+        self.where_clause_params += query.where_clause_params
+        for table in query.tables:
+            if table not in self.tables:
+                self.tables.append(table)
+        for join_table in query.joins:
+            self.joins.setdefault(join_table, [])
+            for join in query.joins[join_table]:
+                if join not in self.joins[join_table]:
+                    self.joins[join_table].append(join)
+
+    def __add__(self, query):
+        """ Return a new copy of `self` that includes `query` """
+        result = Query(
+            list(self.tables or []),
+            list(self.where_clause or []),
+            list(self.where_clause_params or []),
+            deepcopy(self.joins or {}))
+        result.append(query)
+        return result
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
