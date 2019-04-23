@@ -25,6 +25,9 @@ import security
 
 _logger = logging.getLogger(__name__)
 
+databases = []
+
+
 class DatabaseExists(Warning):
     pass
 
@@ -70,7 +73,13 @@ def dispatch(method, params):
     else:
         raise KeyError("Method not found: %s" % method)
     fn = globals()['exp_' + method]
-    return fn(*params)
+    res = fn(*params)
+    if any(command in method for command in (
+            'create', 'drop', 'dump', 'restore', 'rename', 'duplicate')):
+        # Delete cache of available databases
+        global databases
+        databases = []
+    return res
 
 def _create_empty_database(name):
     db = openerp.sql_db.db_connect('postgres')
@@ -307,6 +316,10 @@ def exp_db_exist(db_name):
 def exp_list(document=False):
     if not openerp.tools.config['list_db'] and not document:
         raise openerp.exceptions.AccessDenied()
+    global databases
+    if databases:
+        return list(databases)
+    _logger.debug("Fetching list of available databases")
     chosen_template = openerp.tools.config['db_template']
     templates_list = tuple(set(['template0', 'template1', 'postgres', chosen_template]))
     db = openerp.sql_db.db_connect('postgres')
@@ -328,7 +341,8 @@ def exp_list(document=False):
         except Exception:
             res = []
     res.sort()
-    return res
+    databases = res
+    return list(databases)
 
 def exp_change_admin_password(new_password):
     openerp.tools.config['admin_passwd'] = new_password
