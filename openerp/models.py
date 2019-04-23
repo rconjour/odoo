@@ -74,7 +74,7 @@ from .tools.translate import _
 _logger = logging.getLogger(__name__)
 _schema = logging.getLogger(__name__ + '.schema')
 
-regex_order = re.compile('^(\s*([a-z0-9:_]+|"[a-z0-9:_]+")(\s+(desc|asc))?\s*(,|$))+(?<!,)$', re.I)
+regex_order = re.compile('^(\s*([a-z0-9:_.]+|"[a-z0-9:_]+")(\s+(desc|asc))?\s*(,|$))+(?<!,)$', re.I)
 regex_object_name = re.compile(r'^[a-z0-9_.]+$')
 onchange_v7 = re.compile(r"^(\w+)\((.*)\)$")
 
@@ -4730,7 +4730,7 @@ class BaseModel(object):
             rule_query = rule_obj.domain_get(cr, uid, inherited_model, mode, context=context)
             apply_rule(rule_query, parent_model=inherited_model)
 
-    def _generate_m2o_order_by(self, alias, order_field, query, reverse_direction, seen):
+    def _generate_m2o_order_by(self, alias, order_field, query, reverse_direction, seen, m2o_order=None):
         """
         Add possibly missing JOIN to ``query`` and generate the ORDER BY clause for m2o fields,
         either native m2o fields or function/related fields that are stored, including
@@ -4755,7 +4755,7 @@ class BaseModel(object):
 
         # figure out the applicable order_by for the m2o
         dest_model = self.pool[order_field_column._obj]
-        m2o_order = dest_model._order
+        m2o_order = m2o_order or dest_model._order
         if not regex_order.match(m2o_order):
             # _order is complex, can't use it here, so we default to _rec_name
             m2o_order = dest_model._rec_name
@@ -4776,9 +4776,15 @@ class BaseModel(object):
             order_split = order_part.strip().split(' ')
             order_field = order_split[0].strip()
             order_direction = order_split[1].strip().upper() if len(order_split) == 2 else ''
+            m2o_order = None
             if reverse_direction:
                 order_direction = 'ASC' if order_direction == 'DESC' else 'DESC'
-            do_reverse = order_direction == 'DESC'
+            if '.' in order_field:
+                order_field, m2o_order = order_field.split('.', 1)
+                m2o_order = '%s %s' % (m2o_order, order_direction)
+                do_reverse = False
+            else:
+                do_reverse = order_direction == 'DESC'
             order_column = None
             inner_clauses = []
             add_dir = False
@@ -4793,7 +4799,8 @@ class BaseModel(object):
                     key = (self._name, order_column._obj, order_field)
                     if key not in seen:
                         seen.add(key)
-                        inner_clauses = self._generate_m2o_order_by(alias, order_field, query, do_reverse, seen)
+                        inner_clauses = self._generate_m2o_order_by(alias, order_field, query, do_reverse, seen,
+                                                                    m2o_order=m2o_order)
                 else:
                     continue  # ignore non-readable or "non-joinable" fields
             elif order_field in self._inherit_fields:
@@ -4806,7 +4813,8 @@ class BaseModel(object):
                     key = (parent_obj._name, order_column._obj, order_field)
                     if key not in seen:
                         seen.add(key)
-                        inner_clauses = self._generate_m2o_order_by(alias, order_field, query, do_reverse, seen)
+                        inner_clauses = self._generate_m2o_order_by(alias, order_field, query, do_reverse, seen,
+                                                                    m2o_order=m2o_order)
                 else:
                     continue  # ignore non-readable or "non-joinable" fields
             else:
