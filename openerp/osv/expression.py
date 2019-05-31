@@ -1272,7 +1272,10 @@ class expression(object):
                 format = need_wildcard and '%s' or model._columns[left]._symbol_set[0]
                 unaccent = self._unaccent if sql_operator.endswith('like') else lambda x: x
                 column = '%s.%s' % (table_alias, _quote(left))
-                query = '(%s %s %s)' % (unaccent(column + cast), sql_operator, unaccent(format))
+                if operator == '=ilike' and getattr(model._columns[left], 'index_lower', False):
+                    query = '(LOWER(%s) = LOWER(%s))' % (unaccent(column + cast), unaccent(format))
+                else:
+                    query = '(%s %s %s)' % (unaccent(column + cast), sql_operator, unaccent(format))
             elif left in MAGIC_COLUMNS:
                     query = "(%s.\"%s\"%s %s %%s)" % (table_alias, left, cast, sql_operator)
                     params = right
