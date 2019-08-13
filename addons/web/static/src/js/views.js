@@ -1258,6 +1258,27 @@ instance.web.Sidebar = instance.web.Widget.extend({
             }
         });
     },
+    /**
+     * Get a list of strings with ViewManager supported data-view-types to return all ids from the dataset.
+     * Override me.
+     * @returns {string[]}
+     */
+    get_all_ids_supported_views: function() {
+        //
+        return ['list']
+    },
+    /**
+     * Check to determine if the dataset IDS should be used or the regular IDS.
+     * @returns {boolean}
+     */
+    get_all_ids: function() {
+        var self = this;
+        var view_type = self.getParent().ViewManager.$el.attr("data-view-type");
+        var all_checkboxes = $("th.oe_list_record_selector");
+        var unchecked = all_checkboxes.find("input:checkbox:not(:checked)");
+        var supported_views = self.get_all_ids_supported_views();
+        return supported_views.indexOf(view_type) >= 0 && all_checkboxes.length > 0 && unchecked.length === 0;
+    },
     on_item_action_clicked: function(item) {
         var self = this;
         self.getParent().sidebar_eval_context().done(function (sidebar_eval_context) {
@@ -1273,10 +1294,12 @@ instance.web.Sidebar = instance.web.Widget.extend({
                 new instance.web.Dialog(this, { title: _t("Warning"), size: 'medium',}, $("<div />").text(_t("You must choose at least one record."))).open();
                 return false;
             }
+
             var dataset = self.getParent().dataset;
+
             var active_ids_context = {
                 active_id: ids[0],
-                active_ids: ids,
+                active_ids: (self.get_all_ids()) ? dataset.ids : ids,
                 active_model: dataset.model,
             };
 
