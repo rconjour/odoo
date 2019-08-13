@@ -89,14 +89,14 @@ class TestORM(common.TransactionCase):
     @mute_logger('openerp.models')
     def test_search_read(self):
         # simple search_read
-        self.partner.create(self.cr, UID, {'name': 'MyPartner1'})
+        partner1 = self.env['res.partner'].create({'name': 'MyPartner1'})
         found = self.partner.search_read(self.cr, UID, [['name', '=', 'MyPartner1']], ['name'])
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]['name'], 'MyPartner1')
         self.assertTrue('id' in found[0])
 
         # search_read correct order
-        self.partner.create(self.cr, UID, {'name': 'MyPartner2'})
+        partner2 = self.env['res.partner'].create({'name': 'MyPartner2'})
         found = self.partner.search_read(self.cr, UID, [['name', 'like', 'MyPartner']], ['name'], order="name")
         self.assertEqual(len(found), 2)
         self.assertEqual(found[0]['name'], 'MyPartner1')
@@ -105,6 +105,44 @@ class TestORM(common.TransactionCase):
         self.assertEqual(len(found), 2)
         self.assertEqual(found[0]['name'], 'MyPartner2')
         self.assertEqual(found[1]['name'], 'MyPartner1')
+
+        # Order by chained many2one fields, with and without auto_join
+        parent1 = self.env['res.partner'].create({'name': 'Parent1'})
+        parent2 = self.env['res.partner'].create({'name': 'Parent2'})
+        partner1.write({'parent_id': parent2.id})
+        partner2.write({'parent_id': parent1.id})
+        user1 = self.env['res.users'].create({'login': 'partner1', 'partner_id': partner1.id})
+        user2 = self.env['res.users'].create({'login': 'partner2', 'partner_id': partner2.id})
+        self.assertEqual(
+            self.env['res.users'].search([('id', 'in', (user1.id, user2.id))], order='partner_id.parent_id.name').ids,
+            [user2.id, user1.id])
+        self.assertEqual(
+            self.env['res.users'].search([('id', 'in', (user1.id, user2.id))], order='parent_id.name').ids,
+            [user2.id, user1.id])
+        self.assertEqual(
+            self.env['res.users'].search(
+                [('id', 'in', (user1.id, user2.id))], order='partner_id.parent_id.name desc').ids,
+            [user1.id, user2.id])
+        self.assertEqual(
+            self.env['res.users'].search([('id', 'in', (user1.id, user2.id))], order='partner_id.parent_id').ids,
+            [user2.id, user1.id])
+        self.assertEqual(
+            self.env['res.users'].search([('id', 'in', (user1.id, user2.id))], order='partner_id.parent_id desc').ids,
+            [user1.id, user2.id])
+        self.env['res.partner']._columns['parent_id']._auto_join = False
+        self.assertEqual(
+            self.env['res.users'].search(
+                [('partner_id.parent_id.name', 'in', ('Parent1', 'Parent2'))], order='partner_id.parent_id.name').ids,
+            [user2.id, user1.id])
+        self.env['res.partner']._columns['parent_id']._auto_join = True
+        self.assertEqual(
+            self.env['res.users'].search(
+                [('partner_id.parent_id.name', 'in', ('Parent1', 'Parent2'))], order='partner_id.parent_id.name').ids,
+            [user2.id, user1.id])
+        parent1.write({'name': 'zzzzParent1'})
+        self.assertEqual(
+            self.env['res.users'].search([('id', 'in', (user1.id, user2.id))], order='partner_id.parent_id.name').ids,
+            [user1.id, user2.id])
 
         # search_read that finds nothing
         found = self.partner.search_read(self.cr, UID, [['name', '=', 'Does not exists']], ['name'])
