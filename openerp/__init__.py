@@ -38,6 +38,21 @@ if sys.modules.get("gevent") is not None:
 multi_process = False
 
 #----------------------------------------------------------
+# To make it safe to use logging when mixing threads and forks
+# https://bugs.python.org/issue6721
+#----------------------------------------------------------
+# Only if Odoo is started as opposed to being imported as library
+import __main__
+import os
+if os.path.basename(os.path.normpath(__main__.__file__)) == 'start_odoo':
+    print 'Making it safe to fork workers from threaded main process'
+    import atfork.stdlib_fixer
+    atfork.monkeypatch_os_fork_functions()
+    atfork.stdlib_fixer.fix_logging_module()
+del os
+del __main__
+
+#----------------------------------------------------------
 # libc UTC hack
 #----------------------------------------------------------
 # Make sure the OpenERP server runs in UTC. This is especially necessary
