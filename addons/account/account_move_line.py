@@ -600,8 +600,9 @@ class account_move_line(osv.osv):
             cr.execute('CREATE INDEX account_move_line_journal_id_period_id_index '
                        'ON account_move_line (journal_id, period_id, state, create_uid, id DESC)')
         cr.execute('SELECT indexname FROM pg_indexes WHERE indexname = %s', ('account_move_line_date_id_index',))
-        if not cr.fetchone():
-            cr.execute('CREATE INDEX account_move_line_date_id_index ON account_move_line (date DESC, id desc)')
+        if cr.fetchone():
+            # NOVA, ESBEP-24372: remove this index as it severely messes up searching a large set with a small limit
+            cr.execute('DROP INDEX account_move_line_date_id_index')
         return res
 
     def _check_no_view(self, cr, uid, ids, context=None):
