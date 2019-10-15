@@ -1529,28 +1529,42 @@ class account_move(osv.osv):
         obj_move_line = self.pool.get('account.move.line')
         obj_precision = self.pool.get('decimal.precision')
         prec = obj_precision.precision_get(cr, uid, 'Account')
+        line_ids = {}  # mapping of move ids to move line ids
         for move in self.browse(cr, uid, ids, context):
             journal = move.journal_id
-            amount = 0
-            line_ids = []
             line_draft_ids = []
-            company_id = None
+            cr.execute("SELECT id FROM account_move_line WHERE move_id = %s", (move.id,))
+            line_ids[move.id] = [line_id for line_id, in cr.fetchall()]
+            company = journal.company_id
             # makes sure we don't use outdated period
             obj_move_line._update_journal_check(cr, uid, journal.id, move.period_id.id, context=context)
-            for line in move.line_id:
-                amount += line.debit - line.credit
-                line_ids.append(line.id)
-                if line.state=='draft':
-                    line_draft_ids.append(line.id)
+            cr.execute(
+                """ SELECT SUM(COALESCE(debit, 0) - COALESCE(credit, 0))
+                FROM account_move_line WHERE move_id = %s """, (move.id,))
+            amount = cr.fetchone()[0] or 0
+            cr.execute(
+                """ SELECT aml.id FROM account_move_line aml
+                JOIN account_account aa ON aa.id = aml.account_id
+                WHERE move_id = %s AND aa.company_id != %s
+                LIMIT 1 """,
+                (move.id, company.id))
+            if cr.fetchone():
+                raise osv.except_osv(_('Error!'), _("Cannot create moves for different companies."))
+            cr.execute(
+                """ SELECT aa.code, aa.name FROM account_account aa
+                JOIN account_move_line aml ON aa.id = aml.account_id
+                WHERE move_id = %s AND aml.currency_id IS NOT NULL
+                    AND aa.currency_id IS NOT NULL
+                    AND aa.currency_id NOT IN (aml.currency_id, %s)
+                LIMIT 1 """, (move.id, company.currency_id.id,))
+            row = cr.fetchone()
+            if row:
+                raise osv.except_osv(_('Error!'), _("""Cannot create move with currency different from ..""") % row)
 
-                if not company_id:
-                    company_id = line.account_id.company_id.id
-                if not company_id == line.account_id.company_id.id:
-                    raise osv.except_osv(_('Error!'), _("Cannot create moves for different companies."))
-
-                if line.account_id.currency_id and line.currency_id:
-                    if line.account_id.currency_id.id != line.currency_id.id and (line.account_id.currency_id.id != line.account_id.company_id.currency_id.id):
-                        raise osv.except_osv(_('Error!'), _("""Cannot create move with currency different from ..""") % (line.account_id.code, line.account_id.name))
+            cr.execute(
+                """ SELECT id FROM account_move_line
+                WHERE state != 'valid' AND move_id = %s """, (move.id,))
+            line_draft_ids = [line_id for line_id, in cr.fetchall()]
 
             if round(abs(amount), prec) < 10 ** (-max(5, prec)):
                 # If the move is balanced
@@ -1604,14 +1618,14 @@ class account_move(osv.osv):
             else:
                 # We can't validate it (it's unbalanced)
                 # Setting the lines as draft
-                not_draft_line_ids = list(set(line_ids) - set(line_draft_ids))
+                not_draft_line_ids = list(set(line_ids[move.id]) - set(line_draft_ids))
                 if not_draft_line_ids:
                     obj_move_line.write(cr, uid, not_draft_line_ids, {
                         'state': 'draft'
                     }, context=context, check=False)
         # Create analytic lines for the valid moves
         for record in valid_moves:
-            obj_move_line.create_analytic_lines(cr, uid, [line.id for line in record.line_id], context)
+            obj_move_line.create_analytic_lines(cr, uid, line_ids[record.id], context)
 
         valid_moves = [move.id for move in valid_moves]
         return len(valid_moves) > 0 and valid_moves or False
