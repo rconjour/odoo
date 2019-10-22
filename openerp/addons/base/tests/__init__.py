@@ -3,6 +3,7 @@ import test_api
 import test_base
 import test_basecase
 import test_db_cursor
+import test_db_triggers
 import test_expression
 import test_func
 import test_ir_actions
