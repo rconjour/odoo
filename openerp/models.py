@@ -2813,6 +2813,7 @@ class BaseModel(object):
             _schema.debug("Create table '%s': m2m relation between '%s' and '%s'", m2m_tbl, self._table, ref)
             return True
 
+    @api.noguess
     def _add_sql_triggers(self, cr):
 
         def trigger_exists(operation):
