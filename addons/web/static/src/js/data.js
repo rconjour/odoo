@@ -42,6 +42,7 @@ instance.web.Query = instance.web.Class.extend({
         this._limit = false;
         this._offset = 0;
         this._order_by = [];
+        this._exact = true;
     },
     clone: function (to_set) {
         to_set = to_set || {};
@@ -88,6 +89,7 @@ instance.web.Query = instance.web.Class.extend({
             sort: instance.web.serialize_sort(this._order_by)
         }, options).then(function (results) {
             self._count = results.length;
+            self._exact = results.exact;
             return results.records;
         }, null);
     },
@@ -711,6 +713,9 @@ instance.web.DataSet =  instance.web.Class.extend(instance.web.PropertiesMixin, 
     size: function () {
         return this.ids.length;
     },
+    exact: function () {
+        return true;
+    },
     alter_ids: function(n_ids) {
         this.ids = n_ids;
     },
@@ -784,6 +789,7 @@ instance.web.DataSetSearch =  instance.web.DataSet.extend({
         this._super(parent, model, context);
         this.domain = domain || [];
         this._length = null;
+        this._exact = true;
         this.ids = [];
         this._model = new instance.web.Model(model, context, domain);
     },
@@ -811,7 +817,7 @@ instance.web.DataSetSearch =  instance.web.DataSet.extend({
 
         return q.all().done(function (records) {
             // FIXME: not sure about that one, *could* have discarded count
-            q.count().done(function (count) { self._length = count; });
+            q.count().done(function (count) { self._length = count; self._exact = q._exact; });
             self.ids = _(records).pluck('id');
         });
     },
@@ -843,6 +849,9 @@ instance.web.DataSetSearch =  instance.web.DataSet.extend({
             return this._length;
         }
         return this._super();
+    },
+    exact: function () {
+        return this._exact;
     }
 });
 
