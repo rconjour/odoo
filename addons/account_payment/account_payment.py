@@ -105,7 +105,8 @@ class payment_order(osv.osv):
             ], "Preferred Date", change_default=True, required=True, states={'done': [('readonly', True)]}, help="Choose an option for the Payment Order:'Fixed' stands for a date specified by you.'Directly' stands for the direct execution.'Due date' stands for the scheduled date of execution."),
         'date_created': fields.date('Creation Date', readonly=True),
         'date_done': fields.date('Execution Date', readonly=True),
-        'company_id': fields.related('mode', 'company_id', type='many2one', relation='res.company', string='Company', store=True, readonly=True),
+        'company_id': fields.related('mode', 'company_id', type='many2one', relation='res.company', string='Company', store={
+            'payment.order': (lambda self, cr, uid, ids, c=None: ids, ['mode'], 10)}, readonly=True),
     }
 
     _defaults = {
@@ -320,7 +321,8 @@ class payment_line(osv.osv):
         'create_date': fields.datetime('Created', readonly=True),
         'state': fields.selection([('normal','Free'), ('structured','Structured')], 'Communication Type', required=True),
         'bank_statement_line_id': fields.many2one('account.bank.statement.line', 'Bank statement line'),
-        'company_id': fields.related('order_id', 'company_id', type='many2one', relation='res.company', string='Company', store=True, readonly=True),
+        'company_id': fields.related('order_id', 'company_id', type='many2one', relation='res.company', string='Company', store={
+            'payment.line': (lambda self, cr, uid, ids, c=None: ids, ['order_id'], 10)}, readonly=True),
     }
     _defaults = {
         'name': lambda obj, cursor, user, context: obj.pool.get('ir.sequence'
