@@ -953,7 +953,8 @@ class account_bank_statement_line(osv.osv):
         'ref': fields.char('Reference'),
         'note': fields.text('Notes'),
         'sequence': fields.integer('Sequence', select=True, help="Gives the sequence order when displaying a list of bank statement lines."),
-        'company_id': fields.related('statement_id', 'company_id', type='many2one', relation='res.company', string='Company', store=True, readonly=True),
+        'company_id': fields.related('statement_id', 'company_id', type='many2one', relation='res.company', string='Company', store={
+            'account.bank.statement.line': (lambda self, cr, uid, ids, c=None: ids, ['statement_id'], 10)}, readonly=True),
         'journal_entry_id': fields.many2one('account.move', 'Journal Entry', copy=False),
         'amount_currency': fields.float('Amount Currency', help="The amount expressed in an optional other currency if it is a multi-currency entry.", digits_compute=dp.get_precision('Account')),
         'currency_id': fields.many2one('res.currency', 'Currency', help="The optional other currency if it is a multi-currency entry."),
