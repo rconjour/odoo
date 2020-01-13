@@ -2820,6 +2820,7 @@ class BaseModel(object):
         cr.commit()     # start a new transaction
 
         if self._auto:
+            self._add_sql_triggers(cr)
             self._add_sql_constraints(cr)
 
         if create:
@@ -2951,6 +2952,51 @@ class BaseModel(object):
             _schema.debug("Create table '%s': m2m relation between '%s' and '%s'", m2m_tbl, self._table, ref)
             return True
 
+    @api.noguess
+    def _add_sql_triggers(self, cr):
+
+        def trigger_exists(operation):
+            cr.execute(
+                """
+                SELECT tgname FROM pg_trigger
+                WHERE NOT tgisinternal 
+                AND tgrelid = '{table}'::regclass 
+                AND tgname = 'trg_{table}_on_{operation}';
+                """.format(
+                    table=self._table, operation=operation
+                )
+            )
+            return len(cr.fetchall()) > 0
+
+        operations = ['insert', 'update', 'delete']
+
+        add_trigger_sql = """
+            CREATE TRIGGER trg_{table}_on_{operation}
+            BEFORE {operation} ON {table}
+            FOR EACH ROW
+            EXECUTE PROCEDURE trg_on_{operation}();
+        """
+
+        drop_trigger_sql = """
+            DROP TRIGGER IF EXISTS trg_{table}_on_{operation} 
+            ON {table} CASCADE;
+        """
+
+        if self._log_access:
+            sql = add_trigger_sql
+            sql_required = lambda x: not trigger_exists(x)
+        else:
+            sql = drop_trigger_sql
+            sql_required = trigger_exists
+
+        sqls = [
+            sql.format(table=self._table, operation=op)
+            for op in operations if sql_required(op)
+        ]
+
+        if sqls:
+            cr.execute("\n".join(sqls))
+            cr.commit()
 
     def _add_sql_constraints(self, cr):
         """
@@ -4016,8 +4062,10 @@ class BaseModel(object):
         # for recomputing new-style fields
         recs = self.browse(cr, user, ids, context)
         modified_fields = list(vals)
+        # UAASDEV-6566: We don't need to inject this as we now have
+        # database triggers in place.
         if self._log_access:
-            modified_fields += ['write_date', 'write_uid']
+              modified_fields += ['write_uid']
         recs.modified(modified_fields)
 
         parents_changed = []
@@ -4399,8 +4447,9 @@ class BaseModel(object):
         if self._log_access:
             updates.append(('create_uid', '%s', user))
             updates.append(('write_uid', '%s', user))
+            #  UAASDEV-6566: We don't need to inject these
+            #  as we have database triggers in place.
             updates.append(('create_date', "(now() at time zone 'UTC')"))
-            updates.append(('write_date', "(now() at time zone 'UTC')"))
 
         # the list of tuples used in this formatting corresponds to
         # tuple(field_name, format, value)

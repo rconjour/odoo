@@ -277,6 +277,10 @@ def load_modules(db, force_demo=False, status=None, update_module=False):
             if not tools.config['without_demo']:
                 tools.config["demo"]['all'] = 1
 
+        if not openerp.modules.db.triggers_initialized(cr):
+            _logger.info("Init database triggers")
+            openerp.modules.db.initialize_triggers(cr)
+
         # This is a brand new registry, just created in
         # openerp.modules.registry.RegistryManager.new().
         registry = openerp.registry(cr.dbname)
