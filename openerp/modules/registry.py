@@ -485,13 +485,13 @@ class RegistryManager(object):
         changed = False
         if openerp.multi_process and db_name in cls.registries:
             registry = cls.get(db_name)
-            cr = registry.cursor()
-            try:
+            with registry.cursor() as cr:
                 cr.execute("""
                     SELECT base_registry_signaling.last_value,
                            base_cache_signaling.last_value
                     FROM base_registry_signaling, base_cache_signaling""")
                 r, c = cr.fetchone()
+            if True:  # preserve indentation level in custom patch
                 _logger.debug("Multiprocess signaling check: [Registry - old# %s new# %s] "\
                     "[Cache - old# %s new# %s]",
                     registry.base_registry_signaling_sequence, r,
@@ -512,8 +512,6 @@ class RegistryManager(object):
                     registry.reset_any_cache_cleared()
                 registry.base_registry_signaling_sequence = r
                 registry.base_cache_signaling_sequence = c
-            finally:
-                cr.close()
         return changed
 
     @classmethod
