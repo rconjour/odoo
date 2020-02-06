@@ -378,14 +378,17 @@ class module(osv.osv):
             raise orm.except_orm(_('Error'), msg % (module_name, e.args[0]))
 
     @api.multi
-    def state_update(self, newstate, states_to_update, level=100):
+    def state_update(self, newstate, states_to_update, level=100, seen=None):
         if level < 1:
             raise orm.except_orm(_('Error'), _('Recursion error in modules dependencies !'))
 
         # whether some modules are installed with demo data
         demo = False
+        if seen is None:
+            seen = []
 
         for module in self:
+            update_demo = False
             # determine dependency modules to update/others
             update_mods, ready_mods = self.browse(), self.browse()
             for dep in module.dependencies_id:
@@ -393,11 +396,13 @@ class module(osv.osv):
                     raise orm.except_orm(_('Error'), _("You try to install module '%s' that depends on module '%s'.\nBut the latter module is not available in your system.") % (module.name, dep.name,))
                 if dep.depend_id.state == newstate:
                     ready_mods += dep.depend_id
+                elif dep.depend_id.name in seen:
+                    update_demo |= dep.depend_id.demo
                 else:
                     update_mods += dep.depend_id
 
             # update dependency modules that require it, and determine demo for module
-            update_demo = update_mods.state_update(newstate, states_to_update, level=level-1)
+            update_demo |= update_mods.state_update(newstate, states_to_update, level=level-1, seen=seen)
             module_demo = module.demo or update_demo or any(mod.demo for mod in ready_mods)
             demo = demo or module_demo
 
@@ -405,6 +410,7 @@ class module(osv.osv):
             self.check_external_dependencies(module.name, newstate)
             if module.state in states_to_update:
                 module.write({'state': newstate, 'demo': module_demo})
+            seen.append(module.name)
 
         return demo
 
