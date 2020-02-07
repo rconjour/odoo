@@ -258,6 +258,7 @@ class res_partner(osv.osv):
 
     __check_vat_nl_re = re.compile("(?:NL)?[0-9A-Z+*]{10}[0-9]{2}")
 
+    # Netherlands VAT validation
     def check_vat_nl(self, vat):
         """
         VAT validation to support the new format introduced in January 2020,
